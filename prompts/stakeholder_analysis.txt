@@ -1,0 +1,33 @@
+Analyze stakeholders for: {project_name}
+
+STAKEHOLDER MAPPING:
+
+1. PRIMARY STAKEHOLDERS (Direct users/beneficiaries):
+   - Roles and responsibilities
+   - Key needs and expectations
+   - Success criteria from their perspective
+
+2. SECONDARY STAKEHOLDERS (Indirectly affected):
+   - Influence level (High/Medium/Low)
+   - Interest level (High/Medium/Low)
+   - Engagement strategy
+
+3. DECISION MAKERS:
+   - Approval authority
+   - Budget control
+   - Strategic alignment needs
+
+4. RACI MATRIX (For key activities):
+   - Responsible (Who does the work)
+   - Accountable (Who approves/owns)
+   - Consulted (Who provides input)
+   - Informed (Who needs updates)
+
+ENGAGEMENT PLAN:
+- Communication frequency for each group
+- Key messages for each stakeholder type
+- Feedback collection mechanisms
+- Change management considerations
+
+BASE YOUR ANALYSIS ON THIS PROJECT DATA:
+{project_details}

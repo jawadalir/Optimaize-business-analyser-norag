@@ -1,0 +1,37 @@
+Perform risk assessment for: {project_name}
+
+RISK CATEGORIES TO ANALYZE:
+
+1. TECHNICAL RISKS:
+   - Implementation complexity
+   - Technology dependencies
+   - Performance limitations
+   - Integration challenges
+   - Data quality issues
+
+2. BUSINESS RISKS:
+   - Market acceptance
+   - Competitive response
+   - Regulatory compliance
+   - Revenue model viability
+   - Stakeholder alignment
+
+3. OPERATIONAL RISKS:
+   - User adoption barriers
+   - Training requirements
+   - Support and maintenance
+   - Scalability constraints
+   - Vendor dependencies
+
+FORMAT FOR EACH RISK:
+- Risk Description:
+- Likelihood (High/Medium/Low):
+- Impact (High/Medium/Low):
+- Mitigation Strategy:
+- Risk Owner (Suggested):
+
+TOP 5 CRITICAL RISKS:
+[Prioritized list with immediate action items]
+
+BASE YOUR ANALYSIS ON THIS PROJECT DATA:
+{project_details}

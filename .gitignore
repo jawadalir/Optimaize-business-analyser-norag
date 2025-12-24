@@ -1,0 +1,8 @@
+# Ignore environment variables
+.env
+
+# Optional: ignore Python cache files or Node modules
+__pycache__/
+node_modules/
+
+venv/

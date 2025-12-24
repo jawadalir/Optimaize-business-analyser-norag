@@ -1,0 +1,33 @@
+Generate comprehensive requirements analysis for: {project_name}
+
+STRUCTURE YOUR ANALYSIS:
+
+1. BUSINESS REQUIREMENTS:
+   - Primary business objectives
+   - Success metrics (KPIs/OKRs)
+   - ROI considerations
+   - Market impact expectations
+
+2. FUNCTIONAL REQUIREMENTS (MoSCoW Prioritized):
+   MUST HAVE (Critical for MVP):
+   SHOULD HAVE (Important but not critical):
+   COULD HAVE (Nice to have):
+   WON'T HAVE (Explicitly out of scope):
+
+3. USER STORIES (Format: As a [role], I want to [action], so that [benefit]):
+   - Include acceptance criteria for each story
+
+4. NON-FUNCTIONAL REQUIREMENTS:
+   - Performance (response time, throughput)
+   - Security (authentication, data protection)
+   - Scalability (user load, data volume)
+   - Compliance (regulatory requirements)
+   - Usability (accessibility, user experience)
+
+5. INTEGRATION REQUIREMENTS:
+   - Systems to integrate with
+   - Data flow requirements
+   - API specifications needed
+
+BASE YOUR ANALYSIS ON THIS PROJECT DATA:
+{project_details}
