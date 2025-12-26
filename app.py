@@ -6,6 +6,8 @@ import base64
 from project_selector import ProjectSelector
 from ba_agent import BusinessAnalystAgent
 from document_generator import DocumentGenerator
+st.cache_resource.clear()  # Clear ALL caches
+st.cache_data.clear()
 
 # Page configuration
 st.set_page_config(
