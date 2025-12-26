@@ -10,6 +10,7 @@ class BusinessAnalystAgent:
         self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         self.prompt_manager = PromptManager()
         self.chat_histories = self.load_all_chat_histories()
+        self.project_memories = self.load_project_memories()  # NEW: Memory storage
     
     def load_all_chat_histories(self) -> Dict[str, List[Dict]]:
         """Load chat histories for all projects from file"""
@@ -41,6 +42,47 @@ class BusinessAnalystAgent:
         os.makedirs(os.path.dirname(config.CHAT_HISTORY_FILE), exist_ok=True)
         with open(config.CHAT_HISTORY_FILE, 'w', encoding='utf-8') as f:
             json.dump(all_entries, f, indent=2)
+    
+    def load_project_memories(self) -> Dict[str, Dict]:
+        """Load project memories from file"""
+        memory_file = "chat_history/project_memories.json"
+        try:
+            if os.path.exists(memory_file):
+                with open(memory_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        return {}
+    
+    def save_project_memories(self):
+        """Save project memories to file"""
+        memory_file = "chat_history/project_memories.json"
+        os.makedirs(os.path.dirname(memory_file), exist_ok=True)
+        with open(memory_file, 'w', encoding='utf-8') as f:
+            json.dump(self.project_memories, f, indent=2)
+    
+    def update_project_memory(self, project_name: str, key: str, value: str):
+        """Update memory for a project"""
+        if project_name not in self.project_memories:
+            self.project_memories[project_name] = {}
+        self.project_memories[project_name][key] = value
+        self.save_project_memories()
+    
+    def get_project_memory(self, project_name: str, key: str) -> Optional[str]:
+        """Get memory for a project"""
+        if project_name in self.project_memories:
+            return self.project_memories[project_name].get(key)
+        return None
+    
+    def get_all_project_memories(self, project_name: str) -> Dict:
+        """Get all memories for a project"""
+        return self.project_memories.get(project_name, {})
+    
+    def clear_project_memories(self, project_name: str):
+        """Clear all memories for a project"""
+        if project_name in self.project_memories:
+            self.project_memories[project_name] = {}
+            self.save_project_memories()
     
     def get_project_history(self, project_name: str) -> List[Dict]:
         """Get chat history for a specific project"""
@@ -76,11 +118,23 @@ class BusinessAnalystAgent:
     
     def analyze_with_options(self, project: Dict, user_input: str, 
                            prompt_type: str = "general",
-                           response_style: str = "detailed",  # "simple" or "detailed"
-                           scope: str = "specific"):  # "specific" or "general"
-        """Perform analysis with style and scope options"""
+                           response_style: str = "detailed",
+                           scope: str = "specific",
+                           strict_mode: bool = False):
+        """Perform analysis with style, scope, and strict mode options"""
         project_name = project["product_name"]
         project_details = json.dumps(project["sections"], indent=2)
+        
+        # Extract and store personal information from user input
+        self.extract_and_store_memory(project_name, user_input)
+        
+        # Get project memories for context
+        project_memories = self.get_all_project_memories(project_name)
+        memory_context = ""
+        if project_memories:
+            memory_context = "\n\nRELEVANT CONTEXT FROM PREVIOUS CONVERSATIONS:\n"
+            for key, value in project_memories.items():
+                memory_context += f"- {key}: {value}\n"
         
         # Get base prompt
         if prompt_type in ["requirements", "requirements_elicitation"]:
@@ -108,7 +162,7 @@ class BusinessAnalystAgent:
             # General analysis with custom instructions
             system_prompt = self.prompt_manager.get_system_prompt(project_name, project_details)
             
-            # Add style and scope instructions
+            # Add style, scope, and strict mode instructions
             style_instruction = ""
             if response_style == "simple":
                 style_instruction = "Provide a concise, bullet-point summary. Focus on key takeaways only."
@@ -121,30 +175,88 @@ class BusinessAnalystAgent:
             else:  # general
                 scope_instruction = "Provide general business analysis principles that apply broadly, then relate to this project."
             
+            # NEW: Strict mode instruction
+            strict_instruction = ""
+            if strict_mode:
+                strict_instruction = """
+                STRICT MODE ENABLED: 
+                - Only answer what is directly asked. Do not add extra information.
+                - Do not provide explanations unless explicitly asked.
+                - Keep responses extremely brief and to the point.
+                - If the question is about stored information, provide ONLY that information.
+                """
+            
             prompt = f"""
             {system_prompt}
+            {memory_context}
             
             ANALYSIS STYLE: {style_instruction}
             SCOPE: {scope_instruction}
+            {strict_instruction}
             
             USER QUESTION: {user_input}
             
             Please provide your analysis accordingly.
             """
-            analysis_type = f"general_{response_style}_{scope}"
+            analysis_type = f"general_{response_style}_{scope}{'_strict' if strict_mode else ''}"
         
-        # Get response from OpenAI
-        response = self.get_openai_response(prompt, response_style)
+        # Get response from OpenAI with adjusted parameters for strict mode
+        response = self.get_openai_response(prompt, response_style, strict_mode)
         
         # Save to history
         self.add_to_history(project_name, user_input, response, analysis_type, response_style)
         
         return response
     
-    def get_openai_response(self, prompt: str, response_style: str = "detailed") -> str:
-        """Get response from OpenAI API with style consideration"""
+    def extract_and_store_memory(self, project_name: str, user_input: str):
+        """Extract personal information from user input and store in memory"""
+        input_lower = user_input.lower()
+        
+        # Patterns for extracting information
+        patterns = {
+            "my name is": "name",
+            "i am called": "name",
+            "call me": "name",
+            "i work as": "role",
+            "my role is": "role",
+            "i'm from": "company",
+            "my company is": "company",
+            "contact me at": "contact",
+            "my email is": "email",
+            "call me at": "phone"
+        }
+        
+        for pattern, memory_key in patterns.items():
+            if pattern in input_lower:
+                # Extract the value after the pattern
+                start_idx = input_lower.find(pattern) + len(pattern)
+                value = user_input[start_idx:].strip()
+                
+                # Clean up the value (remove punctuation, etc.)
+                if value:
+                    # Remove common ending punctuation and words
+                    endings = ['.', ',', 'and', 'but', 'so']
+                    for ending in endings:
+                        if value.lower().endswith(f' {ending}'):
+                            value = value[:-len(ending)-1]
+                    
+                    # Store in memory
+                    self.update_project_memory(project_name, memory_key, value)
+                    break
+    
+    def get_openai_response(self, prompt: str, response_style: str = "detailed", strict_mode: bool = False) -> str:
+        """Get response from OpenAI API with style and strict mode considerations"""
         try:
-            max_tokens = 1000 if response_style == "simple" else 2000
+            # Adjust parameters based on mode
+            if strict_mode:
+                max_tokens = 200  # Very short responses in strict mode
+                temperature = 0.1  # Very deterministic
+            elif response_style == "simple":
+                max_tokens = 500
+                temperature = 0.3
+            else:  # detailed
+                max_tokens = 2000
+                temperature = config.TEMPERATURE
             
             response = self.client.chat.completions.create(
                 model=config.OPENAI_MODEL,
@@ -152,7 +264,7 @@ class BusinessAnalystAgent:
                     {"role": "system", "content": "You are a senior Business Analyst providing professional analysis."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=config.TEMPERATURE,
+                temperature=temperature,
                 max_tokens=max_tokens
             )
             return response.choices[0].message.content
