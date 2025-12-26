@@ -15,81 +15,73 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for ChatGPT-like chat
+# Custom CSS for better display
 st.markdown("""
 <style>
-    /* Main container */
-    .stApp {
-        background-color: #f5f5f5;
+    /* Style for the latest response box */
+    .latest-response-box {
+        background-color: #f8f9fa;
+        border: 2px solid #1976d2;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 15px 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     
-    /* Chat containers */
-    .chat-message {
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-        display: flex;
-        flex-direction: column;
-        max-width: 80%;
+    .latest-response-title {
+        color: #1976d2;
+        font-weight: bold;
+        font-size: 1.2rem;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #e3f2fd;
+        padding-bottom: 8px;
     }
     
-    .chat-message.user {
-        background-color: #e3f2fd;
-        margin-left: auto;
-        border-bottom-right-radius: 0.2rem;
-    }
-    
-    .chat-message.assistant {
-        background-color: #f5f5f5;
-        margin-right: auto;
-        border-bottom-left-radius: 0.2rem;
+    .response-content {
+        font-size: 1rem;
+        line-height: 1.6;
+        color: #333;
+        max-height: 400px;
+        overflow-y: auto;
+        padding: 10px;
+        background-color: white;
+        border-radius: 5px;
         border: 1px solid #e0e0e0;
     }
     
-    /* Message header */
-    .message-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 0.5rem;
-        font-weight: 600;
+    /* Style for chat history messages */
+    .chat-history-message {
+        padding: 12px;
+        border-radius: 8px;
+        margin: 8px 0;
+        background-color: #f5f5f5;
+        border-left: 4px solid #1976d2;
     }
     
-    .message-header.user {
-        color: #1976d2;
+    .chat-history-user {
+        background-color: #e3f2fd;
+        border-left-color: #2196f3;
     }
     
-    .message-header.assistant {
-        color: #388e3c;
+    .chat-history-assistant {
+        background-color: #f1f8e9;
+        border-left-color: #4caf50;
     }
     
-    /* Timestamp */
-    .message-timestamp {
+    /* Style for timestamp */
+    .timestamp {
         font-size: 0.8rem;
-        color: #757575;
-        margin-top: 0.5rem;
+        color: #666;
         font-style: italic;
+        margin-top: 5px;
     }
     
-    /* Chat input at bottom */
-    .chat-input-container {
-        position: sticky;
-        bottom: 0;
-        background-color: white;
-        padding: 1rem;
-        border-top: 1px solid #e0e0e0;
-        z-index: 100;
+    /* Style for suggestions */
+    .suggestion-button {
+        margin: 5px 0;
     }
     
-    /* Project selector */
-    .project-selector {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1rem;
-        border-radius: 10px;
-        color: white;
-        margin-bottom: 1rem;
-    }
-    
-    /* Response style pills */
+    /* Style pills for settings */
     .style-pill {
         display: inline-block;
         padding: 0.25rem 0.75rem;
@@ -97,29 +89,9 @@ st.markdown("""
         font-size: 0.85rem;
         margin-right: 0.5rem;
         margin-bottom: 0.5rem;
-    }
-    
-    .style-pill.active {
         background-color: #4caf50;
         color: white;
         font-weight: bold;
-    }
-    
-    .style-pill.inactive {
-        background-color: #e0e0e0;
-        color: #666;
-        cursor: pointer;
-    }
-    
-    /* Analysis type badge */
-    .analysis-badge {
-        display: inline-block;
-        padding: 0.2rem 0.6rem;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        margin-left: 0.5rem;
-        background-color: #bbdefb;
-        color: #1565c0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -140,71 +112,86 @@ def init_session_state():
     
     # Chat settings
     if 'response_style' not in st.session_state:
-        st.session_state.response_style = "detailed"  # "simple" or "detailed"
+        st.session_state.response_style = "detailed"
     
     if 'response_scope' not in st.session_state:
-        st.session_state.response_scope = "specific"  # "specific" or "general"
+        st.session_state.response_scope = "specific"
+    
+    # NEW: Strict mode setting
+    if 'strict_mode' not in st.session_state:
+        st.session_state.strict_mode = False
     
     # Chat input
     if 'user_input' not in st.session_state:
         st.session_state.user_input = ""
     
-    # Keep track of current chat view
-    if 'current_chat_view' not in st.session_state:
-        st.session_state.current_chat_view = "chat"
+    # Auto-send flag for suggestions
+    if 'auto_send' not in st.session_state:
+        st.session_state.auto_send = False
+    
+    # Show/hide chat history
+    if 'show_chat_history' not in st.session_state:
+        st.session_state.show_chat_history = False
+    
+    # Store messages for current session
+    if 'session_messages' not in st.session_state:
+        st.session_state.session_messages = {}
+    
+    # Store latest response
+    if 'latest_response' not in st.session_state:
+        st.session_state.latest_response = ""
 
 init_session_state()
 
-# Helper functions for chat display
-def display_chat_message(role, content, timestamp=None, analysis_type=None):
-    """Display a chat message in ChatGPT-like style"""
-    if role == "user":
-        st.markdown(f"""
-        <div class="chat-message user">
-            <div class="message-header user">
-                👤 You
-            </div>
-            <div>{content}</div>
-            {f'<div class="message-timestamp">{timestamp}</div>' if timestamp else ''}
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown(f"""
-        <div class="chat-message assistant">
-            <div class="message-header assistant">
-                🤖 Business Analyst
-                {f'<span class="analysis-badge">{analysis_type}</span>' if analysis_type else ''}
-            </div>
-            <div>{content}</div>
-            {f'<div class="message-timestamp">{timestamp}</div>' if timestamp else ''}
-        </div>
-        """, unsafe_allow_html=True)
+# Function to clean response text
+def clean_response_text(text):
+    """Remove unwanted formatting and extract clean text"""
+    if not text:
+        return ""
+    
+    # Remove markdown headers
+    lines = text.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        # Remove markdown headers
+        if line.startswith('# '):
+            line = line[2:].strip()
+        elif line.startswith('## '):
+            line = line[3:].strip()
+        elif line.startswith('### '):
+            line = line[4:].strip()
+        
+        # Remove HTML tags if any
+        import re
+        line = re.sub(r'<[^>]+>', '', line)
+        
+        cleaned_lines.append(line)
+    
+    return '\n'.join(cleaned_lines)
 
-def get_project_history_display(project_name):
-    """Get formatted chat history for display"""
-    history = st.session_state.agent.get_project_history(project_name)
-    display_history = []
-    
-    for entry in history[-20:]:  # Show last 20 messages
-        display_history.append({
-            "role": "user",
-            "content": entry["user_input"],
-            "timestamp": entry["timestamp"],
-            "analysis_type": entry.get("analysis_type", "general")
-        })
-        display_history.append({
-            "role": "assistant",
-            "content": entry["agent_response"],
-            "timestamp": entry["timestamp"],
-            "analysis_type": entry.get("analysis_type", "general"),
-            "response_style": entry.get("response_style", "detailed")
-        })
-    
-    return display_history
+# Function to get or create session messages for a project
+def get_session_messages(project_name):
+    """Get messages for current session"""
+    if project_name not in st.session_state.session_messages:
+        st.session_state.session_messages[project_name] = []
+    return st.session_state.session_messages[project_name]
+
+# Function to add message to session
+def add_to_session_messages(project_name, role, content, timestamp=None):
+    """Add message to session messages"""
+    messages = get_session_messages(project_name)
+    messages.append({
+        "role": role,
+        "content": clean_response_text(content),
+        "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+    # Keep only last 20 messages in session
+    st.session_state.session_messages[project_name] = messages[-20:]
 
 # Header
-st.markdown('<h1 style="text-align: center; color: #1976d2;">🤖 Business Analyst Agent</h1>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; color: #666;">AI-powered business analysis with ChatGPT-like interface</p>', unsafe_allow_html=True)
+st.title("🤖 Business Analyst Agent")
+st.markdown("AI-powered business analysis for your projects")
 
 # Sidebar
 with st.sidebar:
@@ -214,7 +201,7 @@ with st.sidebar:
     projects = st.session_state.project_selector.get_all_projects()
     project_names = [p["product_name"] for p in projects]
     
-    # Project selection with visual indicator
+    # Project selection
     selected_project_name = st.selectbox(
         "Select a project:",
         ["-- Select a Project --"] + project_names,
@@ -226,32 +213,27 @@ with st.sidebar:
         if selected_project_name != st.session_state.current_project_name:
             st.session_state.selected_project = st.session_state.project_selector.get_project_by_name(selected_project_name)
             st.session_state.current_project_name = selected_project_name
+            st.session_state.user_input = ""
             st.rerun()
     
     if st.session_state.selected_project:
         project = st.session_state.selected_project
         
-        st.markdown(f"""
-        <div class="project-selector">
-            <h3>🎯 {project['product_name']}</h3>
-            <p>Active Analysis Project</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"### 🎯 {project['product_name']}")
         
-        # Project stats
-        history = st.session_state.agent.get_project_history(project['product_name'])
-        st.metric("Chat Messages", len(history))
+        # Get actual chat history from agent
+        actual_history = st.session_state.agent.get_project_history(project['product_name'])
+        st.metric("Total Messages", len(actual_history))
         
         st.markdown("---")
         
-        # Response Style Selection
+        # Response Settings
         st.markdown("### ⚙️ Response Settings")
         
-        # Style selection
         col1, col2 = st.columns(2)
         with col1:
             style = st.radio(
-                "Response Style:",
+                "Style:",
                 ["Detailed", "Simple"],
                 index=0 if st.session_state.response_style == "detailed" else 1,
                 key="style_radio"
@@ -260,28 +242,50 @@ with st.sidebar:
         
         with col2:
             scope = st.radio(
-                "Response Scope:",
+                "Scope:",
                 ["Specific", "General"],
                 index=0 if st.session_state.response_scope == "specific" else 1,
                 key="scope_radio"
             )
             st.session_state.response_scope = scope.lower()
         
+        # NEW: Response Mode
+        st.markdown("### 🎯 Response Mode")
+        col3, col4 = st.columns(2)
+        with col3:
+            strict_mode = st.checkbox(
+                "Strict Mode",
+                value=st.session_state.strict_mode,
+                help="In strict mode, the agent only answers exactly what's asked, no extra information"
+            )
+            st.session_state.strict_mode = strict_mode
+        
+        with col4:
+            # Show current memory count
+            if st.session_state.selected_project:
+                memories = st.session_state.agent.get_all_project_memories(
+                    st.session_state.current_project_name
+                )
+                st.metric("Stored Facts", len(memories))
+        
         st.markdown("---")
         
         # Quick Actions
         st.markdown("### ⚡ Quick Actions")
         
-        if st.button("📋 Requirements Analysis", use_container_width=True):
+        if st.button("📋 Requirements", use_container_width=True):
             st.session_state.user_input = "Perform comprehensive requirements analysis"
+            st.session_state.auto_send = True
             st.rerun()
         
         if st.button("⚠️ Risk Assessment", use_container_width=True):
             st.session_state.user_input = "Perform risk assessment"
+            st.session_state.auto_send = True
             st.rerun()
         
-        if st.button("👥 Stakeholder Analysis", use_container_width=True):
+        if st.button("👥 Stakeholders", use_container_width=True):
             st.session_state.user_input = "Analyze stakeholders"
+            st.session_state.auto_send = True
             st.rerun()
         
         st.markdown("---")
@@ -302,81 +306,38 @@ with st.sidebar:
             "SWOT Analysis": "swot"
         }
         
-        detail_level = st.radio("Detail Level:", ["Detailed", "Simple"], horizontal=True)
-        
-        if st.button("Generate Document", use_container_width=True, type="secondary"):
-            with st.spinner(f"Generating {doc_type}..."):
-                response = st.session_state.agent.generate_document(
-                    project,
-                    doc_map[doc_type],
-                    detail_level.lower()
-                )
-                
-                # Add to chat
-                st.session_state.agent.add_to_history(
-                    project['product_name'],
-                    f"Generate {doc_type} ({detail_level})",
-                    response,
-                    f"document_{doc_map[doc_type]}",
-                    detail_level.lower()
-                )
-                st.rerun()
+        if st.button("Generate Document", use_container_width=True):
+            st.session_state.user_input = f"Generate {doc_type} document"
+            st.session_state.auto_send = True
+            st.rerun()
         
         st.markdown("---")
         
         # Chat Management
         st.markdown("### 💬 Chat Management")
         
-        if st.button("🗑️ Clear Chat History", use_container_width=True):
-            st.session_state.agent.clear_project_history(project['product_name'])
-            st.success(f"Chat history cleared for {project['product_name']}")
-            st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ Clear History", use_container_width=True):
+                # Clear both agent history and session messages
+                st.session_state.agent.clear_project_history(project['product_name'])
+                if project['product_name'] in st.session_state.session_messages:
+                    st.session_state.session_messages[project['product_name']] = []
+                st.session_state.latest_response = ""
+                st.success(f"Chat history cleared for {project['product_name']}")
+                st.rerun()
         
-        if st.button("📥 Export Chat", use_container_width=True):
-            # Export functionality
-            history = st.session_state.agent.get_project_history(project['product_name'])
-            export_data = {
-                "project": project['product_name'],
-                "export_date": datetime.now().isoformat(),
-                "messages": history
-            }
-            
-            json_str = json.dumps(export_data, indent=2)
-            b64 = base64.b64encode(json_str.encode()).decode()
-            href = f'<a href="data:file/json;base64,{b64}" download="{project["product_name"]}_chat_export.json">Download Chat Export</a>'
-            st.markdown(href, unsafe_allow_html=True)
+        with col2:
+            # Toggle chat history visibility
+            toggle_text = "📜 Show History" if not st.session_state.show_chat_history else "📜 Hide History"
+            if st.button(toggle_text, use_container_width=True):
+                st.session_state.show_chat_history = not st.session_state.show_chat_history
+                st.rerun()
 
 # Main Content Area
 if not st.session_state.selected_project:
-    # Welcome screen when no project selected
-    st.markdown("""
-    <div style="text-align: center; padding: 4rem;">
-        <h2>👋 Welcome to Business Analyst Agent</h2>
-        <p style="font-size: 1.2rem; color: #666; margin-bottom: 2rem;">
-            Select a project from the sidebar to start your analysis
-        </p>
-        
-        <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 3rem;">
-            <div style="text-align: center; padding: 1.5rem; background: white; border-radius: 10px; width: 200px;">
-                <div style="font-size: 2rem;">📋</div>
-                <h4>Requirements Analysis</h4>
-                <p>Elicit and document project requirements</p>
-            </div>
-            
-            <div style="text-align: center; padding: 1.5rem; background: white; border-radius: 10px; width: 200px;">
-                <div style="font-size: 2rem;">⚠️</div>
-                <h4>Risk Assessment</h4>
-                <p>Identify and mitigate project risks</p>
-            </div>
-            
-            <div style="text-align: center; padding: 1.5rem; background: white; border-radius: 10px; width: 200px;">
-                <div style="font-size: 2rem;">👥</div>
-                <h4>Stakeholder Analysis</h4>
-                <p>Map and engage project stakeholders</p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Welcome screen
+    st.info("👈 Select a project from the sidebar to begin analysis")
     
     # Show available projects
     st.markdown("### Available Projects")
@@ -392,68 +353,96 @@ if not st.session_state.selected_project:
                 st.session_state.current_project_name = project['product_name']
                 st.rerun()
 else:
-    # Project is selected - Show chat interface
+    # Project is selected
     project = st.session_state.selected_project
     
-    # Header with project info
+    # Project header with strict mode indicator
     col1, col2, col3 = st.columns([3, 2, 1])
     with col1:
         st.markdown(f"### 💬 Chat: **{project['product_name']}**")
     with col2:
-        # Style indicators
+        # Style indicators with strict mode
         style_pill = "🟢 Detailed" if st.session_state.response_style == "detailed" else "⚪ Simple"
         scope_pill = "🎯 Specific" if st.session_state.response_scope == "specific" else "🌐 General"
-        st.markdown(f"<div style='display: flex; gap: 0.5rem;'><span class='style-pill active'>{style_pill}</span><span class='style-pill active'>{scope_pill}</span></div>", unsafe_allow_html=True)
+        strict_pill = "🎯 Strict" if st.session_state.strict_mode else "⚪ Normal"
+        st.markdown(
+            f"<div style='display: flex; gap: 0.5rem; flex-wrap: wrap;'>"
+            f"<span class='style-pill active'>{style_pill}</span>"
+            f"<span class='style-pill active'>{scope_pill}</span>"
+            f"<span class='style-pill active'>{strict_pill}</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
     with col3:
-        if st.button("🔄 New Chat", use_container_width=True):
-            # Create a new chat within same project (just clear current view)
+        if st.button("🔄 Refresh"):
+            st.rerun()
+    
+    # Get session messages for this project
+    session_messages = get_session_messages(project['product_name'])
+    
+    # --- QUICK SUGGESTIONS (ABOVE INPUT) ---
+    st.markdown("### 💡 Quick Suggestions")
+    
+    suggestions = [
+        ("What are the main business requirements?", "📋"),
+        ("Identify key stakeholders and their interests", "👥"),
+        ("What are the biggest implementation risks?", "⚠️"),
+        ("Suggest measurable success metrics/KPIs", "📊")
+    ]
+    
+    cols = st.columns(4)
+    for idx, (suggestion, icon) in enumerate(suggestions):
+        with cols[idx]:
+            if st.button(f"{icon} {suggestion[:18]}...", use_container_width=True, key=f"sugg_{idx}"):
+                st.session_state.user_input = suggestion
+                st.session_state.auto_send = True
+                st.rerun()
+    
+    # --- CHAT INPUT (TOP SECTION) ---
+    st.markdown("### 💬 Your Question")
+    
+    # Handle auto-send from suggestions
+    if st.session_state.auto_send and st.session_state.user_input:
+        with st.spinner("🤔 Analyzing..."):
+            # Add user message to session
+            add_to_session_messages(project['product_name'], "user", st.session_state.user_input)
+            
+            # Get analysis from agent with strict mode
+            response = st.session_state.agent.analyze_with_options(
+                project,
+                st.session_state.user_input,
+                response_style=st.session_state.response_style,
+                scope=st.session_state.response_scope,
+                strict_mode=st.session_state.strict_mode  # NEW: Added strict mode
+            )
+            
+            # Add assistant response to session
+            add_to_session_messages(project['product_name'], "assistant", response)
+            
+            # Store latest response
+            st.session_state.latest_response = clean_response_text(response)
+            
+            # Clear auto-send flag
+            st.session_state.auto_send = False
             st.session_state.user_input = ""
             st.rerun()
     
-    # Display chat history for current project
-    chat_history = get_project_history_display(project['product_name'])
+    # Input field
+    user_input = st.text_area(
+        "Type your question:",
+        value=st.session_state.user_input,
+        placeholder=f"Ask about {project['product_name']}...",
+        height=80,
+        key="chat_input",
+        label_visibility="collapsed"
+    )
     
-    # Chat container
-    chat_container = st.container()
-    
-    with chat_container:
-        if chat_history:
-            for message in chat_history:
-                display_chat_message(
-                    message["role"],
-                    message["content"],
-                    message.get("timestamp"),
-                    message.get("analysis_type")
-                )
-        else:
-            st.markdown("""
-            <div style="text-align: center; padding: 3rem; color: #666;">
-                <h3>💬 No messages yet</h3>
-                <p>Start a conversation with your Business Analyst Agent!</p>
-                <p>Try asking about requirements, risks, stakeholders, or use the quick actions in the sidebar.</p>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # Chat input at bottom (fixed position)
-    st.markdown('<div class="chat-input-container">', unsafe_allow_html=True)
-    
+    # Send button
     col1, col2 = st.columns([4, 1])
-    
     with col1:
-        user_input = st.text_area(
-            "Your message:",
-            value=st.session_state.user_input,
-            placeholder=f"Ask about {project['product_name']}... (e.g., 'What are the key success metrics?', 'Analyze the market positioning', 'Identify stakeholders')",
-            height=100,
-            key="chat_input",
-            label_visibility="collapsed"
-        )
-    
+        pass
     with col2:
-        st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
         send_button = st.button("🚀 Send", use_container_width=True, type="primary")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
     
     # Handle send button
     if send_button and user_input.strip():
@@ -463,45 +452,126 @@ else:
             
             if detected_project and detected_project['product_name'] != st.session_state.current_project_name:
                 # Switch to detected project
-                st.info(f"🔍 Detected reference to **{detected_project['product_name']}**. Switching project...")
+                st.info(f"🔍 Switching to: **{detected_project['product_name']}**")
                 st.session_state.selected_project = detected_project
                 st.session_state.current_project_name = detected_project['product_name']
                 st.session_state.user_input = user_input
                 st.rerun()
             
-            # Get analysis with selected style and scope
+            # Add user message to session
+            add_to_session_messages(project['product_name'], "user", user_input)
+            
+            # Get analysis from agent with strict mode
             response = st.session_state.agent.analyze_with_options(
                 project,
                 user_input,
                 response_style=st.session_state.response_style,
-                scope=st.session_state.response_scope
+                scope=st.session_state.response_scope,
+                strict_mode=st.session_state.strict_mode  # NEW: Added strict mode
             )
+            
+            # Add assistant response to session
+            add_to_session_messages(project['product_name'], "assistant", response)
+            
+            # Store latest response
+            st.session_state.latest_response = clean_response_text(response)
             
             # Clear input
             st.session_state.user_input = ""
             st.rerun()
     
-    # Quick suggestions
-    st.markdown("### 💡 Quick Suggestions")
-    
-    suggestion_cols = st.columns(4)
-    
-    suggestions = [
-        ("What are the main business requirements?", "📋"),
-        ("Identify key stakeholders and their interests", "👥"),
-        ("What are the biggest implementation risks?", "⚠️"),
-        ("Suggest measurable success metrics/KPIs", "📊")
-    ]
-    
-    for idx, (suggestion, icon) in enumerate(suggestions):
-        with suggestion_cols[idx]:
-            if st.button(f"{icon} {suggestion[:30]}...", use_container_width=True, key=f"sugg_{idx}"):
-                st.session_state.user_input = suggestion
-                st.rerun()
-    
-    # Project tabs for additional views
+    # Divider
     st.markdown("---")
-    tab1, tab2, tab3 = st.tabs(["📊 Project Details", "📈 Analytics", "🔄 Switch Project"])
+    
+    # --- LATEST RESPONSE (BOLD AND CLEAR) ---
+    if st.session_state.latest_response or session_messages:
+        st.markdown("### 📋 **Latest Response**")
+        
+        # Get the latest assistant response
+        latest_response = st.session_state.latest_response
+        if not latest_response and session_messages:
+            # Find the latest assistant message
+            assistant_messages = [m for m in session_messages if m["role"] == "assistant"]
+            if assistant_messages:
+                latest_response = assistant_messages[-1]["content"]
+        
+        if latest_response:
+            # Display in a styled box with bold, clear text
+            st.markdown(f"""
+            <div class="latest-response-box">
+                <div class="latest-response-title">📋 Business Analyst Response</div>
+                <div class="response-content">
+                    <strong>{latest_response[:500]}</strong>
+                    {latest_response[500:] if len(latest_response) > 500 else ''}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show timestamp for latest response
+            if session_messages and session_messages[-1].get("timestamp"):
+                st.caption(f"🕒 Generated: {session_messages[-1]['timestamp']}")
+    
+    # --- CHAT HISTORY (HIDDEN BY DEFAULT) ---
+    if st.session_state.show_chat_history and len(session_messages) > 0:
+        st.markdown("---")
+        st.markdown("### 📜 Chat History")
+        
+        # Show all messages except the latest (which is already displayed above)
+        history_messages = session_messages[:-1] if len(session_messages) > 1 else []
+        
+        if history_messages:
+            # Reverse so newest appear at top
+            history_messages_reversed = list(reversed(history_messages))
+            
+            for msg in history_messages_reversed:
+                if msg["role"] == "user":
+                    st.markdown(f"""
+                    <div class="chat-history-message chat-history-user">
+                        <strong>👤 You:</strong> {msg['content'][:150]}{'...' if len(msg['content']) > 150 else ''}
+                        <div class="timestamp">{msg.get('timestamp', '')}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class="chat-history-message chat-history-assistant">
+                        <strong>🤖 Business Analyst:</strong> {msg['content'][:150]}{'...' if len(msg['content']) > 150 else ''}
+                        <div class="timestamp">{msg.get('timestamp', '')}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Show full message in expander
+                with st.expander("View full message"):
+                    if msg["role"] == "user":
+                        st.markdown(f"**You:** {msg['content']}")
+                    else:
+                        st.markdown(f"**Business Analyst:** {msg['content']}")
+        else:
+            st.info("No previous chat history.")
+    elif st.session_state.show_chat_history:
+        st.info("Start chatting to build history!")
+    
+    # Display stored memories if chat history is shown
+    if st.session_state.selected_project and st.session_state.show_chat_history:
+        # Get project memories
+        memories = st.session_state.agent.get_all_project_memories(
+            st.session_state.current_project_name
+        )
+        
+        if memories:
+            with st.expander("🧠 Stored Information (Click to view)"):
+                for key, value in memories.items():
+                    st.markdown(f"**{key.title()}:** {value}")
+                
+                # Clear memories button
+                if st.button("Clear Stored Information", key="clear_memories"):
+                    st.session_state.agent.clear_project_memories(
+                        st.session_state.current_project_name
+                    )
+                    st.rerun()
+    
+    # --- PROJECT DETAILS TABS ---
+    st.markdown("---")
+    tab1, tab2 = st.tabs(["📊 Project Details", "🔄 Switch Project"])
     
     with tab1:
         # Display project details
@@ -512,42 +582,7 @@ else:
                 st.write(section_content)
     
     with tab2:
-        # Analytics dashboard
-        history = st.session_state.agent.get_project_history(project['product_name'])
-        
-        if history:
-            # Count analysis types
-            from collections import Counter
-            analysis_types = [h.get("analysis_type", "general") for h in history]
-            type_counts = Counter(analysis_types)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("#### 📈 Analysis Distribution")
-                if type_counts:
-                    import pandas as pd
-                    type_df = pd.DataFrame({
-                        'Type': list(type_counts.keys()),
-                        'Count': list(type_counts.values())
-                    })
-                    st.bar_chart(type_df.set_index('Type'))
-            
-            with col2:
-                st.markdown("#### 🕒 Recent Activity")
-                for entry in history[-3:]:
-                    st.markdown(f"""
-                    **{entry['timestamp']}**
-                    - **Q:** {entry['user_input'][:50]}...
-                    - **Style:** {entry.get('response_style', 'detailed')}
-                    """)
-        else:
-            st.info("No analytics data yet. Start chatting to see insights!")
-    
-    with tab3:
-        # Project switching interface
-        st.markdown("### 🔄 Switch Project")
-        
+        # Project switching
         for proj in projects:
             if proj['product_name'] != project['product_name']:
                 col1, col2 = st.columns([3, 1])
@@ -560,9 +595,11 @@ else:
                     if st.button("Switch", key=f"switch_{proj['product_name']}"):
                         st.session_state.selected_project = proj
                         st.session_state.current_project_name = proj['product_name']
+                        st.session_state.user_input = ""
+                        st.session_state.latest_response = ""
                         st.rerun()
                 st.markdown("---")
 
 # Footer
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #666;'>Business Analyst Agent v2.0 • ChatGPT-like interface • Separate project chats</div>", unsafe_allow_html=True)
+st.caption("Business Analyst Agent • Chat History Preserved • Clear Response Display • Memory System • Strict Mode")
