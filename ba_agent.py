@@ -6,7 +6,10 @@ from config import config
 from prompt_manager import PromptManager
 
 class BusinessAnalystAgent:
+    VERSION = "2.0-memory"  
+
     def __init__(self):
+        print(f"Initializing BA Agent Version: {self.VERSION}")  # Debug
         self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         self.prompt_manager = PromptManager()
         self.chat_histories = self.load_all_chat_histories()
