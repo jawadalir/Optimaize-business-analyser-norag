@@ -6,12 +6,206 @@ from openai import OpenAI
 from prompt_manager import PromptManager
 from datetime import datetime
 import time
+from docx import Document
+from docx.oxml.ns import nsdecls, qn
+from docx.oxml import parse_xml, OxmlElement
+
+class DocumentCleaner:
+    """Handles document cleaning and formatting operations"""
+    
+    @staticmethod
+    def set_cell_shading(cell, color):
+        """Set cell background color"""
+        shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color}"/>')
+        cell._tc.get_or_add_tcPr().append(shading_elm)
+    
+    @staticmethod
+    def is_table_row(line):
+        """Check if a line contains tab-separated table data"""
+        return len(re.split(r'\s{2,}', line.strip())) > 1
+    
+    @staticmethod
+    def insert_page_break_after(element):
+        """Insert page break after an element"""
+        p = OxmlElement("w:p")
+        r = OxmlElement("w:r")
+        br = OxmlElement("w:br")
+        br.set(qn("w:type"), "page")
+        r.append(br)
+        p.append(r)
+        element.addnext(p)
+    
+    @staticmethod
+    def convert_text_to_formatted_docx(text_content: str, output_path: str) -> str:
+        """Convert text content to formatted DOCX with tables"""
+        # Create a new document
+        doc = Document()
+        
+        # Split content into paragraphs
+        lines = text_content.split('\n')
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            if line.startswith("Table Title:"):
+                # Collect table data
+                paragraphs_to_skip = 0
+                table_rows = []
+                
+                # Add title
+                title_paragraph = doc.add_paragraph(line)
+                title_paragraph.style = 'Heading 3'
+                
+                i += 1
+                paragraphs_to_skip += 1
+                
+                # Skip empty lines
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                    paragraphs_to_skip += 1
+                
+                # Header
+                if i < len(lines) and DocumentCleaner.is_table_row(lines[i]):
+                    header = re.split(r'\s{2,}', lines[i].strip())
+                    table_rows.append(header)
+                    i += 1
+                    paragraphs_to_skip += 1
+                else:
+                    # Not a valid table, continue
+                    continue
+                
+                # Data rows
+                while i < len(lines):
+                    line = lines[i].strip()
+                    if not DocumentCleaner.is_table_row(line):
+                        break
+                    row = re.split(r'\s{2,}', line)
+                    table_rows.append(row)
+                    i += 1
+                    paragraphs_to_skip += 1
+                
+                # Create table
+                if table_rows:
+                    cols = len(table_rows[0])
+                    table = doc.add_table(rows=1, cols=cols)
+                    table.style = "Table Grid"
+                    
+                    # Header formatting
+                    for c, val in enumerate(table_rows[0]):
+                        cell = table.rows[0].cells[c]
+                        cell.text = val
+                        DocumentCleaner.set_cell_shading(cell, "D9EAD3")
+                        cell.paragraphs[0].runs[0].bold = True
+                    
+                    # Body formatting
+                    for row_data in table_rows[1:]:
+                        cells = table.add_row().cells
+                        for c, val in enumerate(row_data):
+                            cells[c].text = val
+                            if c == 0:
+                                DocumentCleaner.set_cell_shading(cells[c], "D9EAD3")
+                                cells[c].paragraphs[0].runs[0].bold = True
+                    
+                    # Add page break after table
+                    if i < len(lines) - 1:
+                        doc.add_page_break()
+                
+                continue
+            
+            elif line.startswith('# '):
+                # Main title
+                doc.add_heading(line[2:], level=0)
+            
+            elif line.startswith('## '):
+                # Section heading
+                doc.add_heading(line[3:], level=1)
+            
+            elif line.startswith('### '):
+                # Subsection heading
+                doc.add_heading(line[4:], level=2)
+            
+            elif line.startswith('#### '):
+                # Sub-subsection heading
+                doc.add_heading(line[5:], level=3)
+            
+            elif line.strip() == '---' or line.strip() == '***':
+                # Horizontal line
+                p = doc.add_paragraph()
+                p.add_run().add_break()
+            
+            elif line.strip():
+                # Regular paragraph
+                doc.add_paragraph(line)
+            
+            i += 1
+        
+        # Save document
+        doc.save(output_path)
+        return output_path
+    
+    @staticmethod
+    def clean_and_format_markdown(document_text: str) -> str:
+        """Clean and format markdown document before conversion"""
+        lines = document_text.split('\n')
+        cleaned_lines = []
+        
+        # Remove excessive blank lines
+        blank_line_count = 0
+        for line in lines:
+            if line.strip() == '':
+                blank_line_count += 1
+                if blank_line_count <= 2:  # Keep max 2 consecutive blank lines
+                    cleaned_lines.append(line)
+            else:
+                blank_line_count = 0
+                cleaned_lines.append(line)
+        
+        # Ensure proper table spacing
+        formatted_lines = []
+        in_table = False
+        
+        for i, line in enumerate(cleaned_lines):
+            current_line = line
+            
+            # Check for table title
+            if line.strip().startswith('Table Title:'):
+                # Add 2 blank lines before table title
+                if i > 0 and cleaned_lines[i-1].strip() != '':
+                    formatted_lines.append('')
+                    formatted_lines.append('')
+                formatted_lines.append(current_line)
+                in_table = True
+                continue
+            
+            # Check for table data
+            if in_table:
+                if DocumentCleaner.is_table_row(current_line):
+                    formatted_lines.append(current_line)
+                else:
+                    # Table ended, add 3 blank lines
+                    formatted_lines.append('')
+                    formatted_lines.append('')
+                    formatted_lines.append('')
+                    formatted_lines.append(current_line)
+                    in_table = False
+            else:
+                formatted_lines.append(current_line)
+        
+        # Add final spacing if still in table
+        if in_table:
+            formatted_lines.append('')
+            formatted_lines.append('')
+            formatted_lines.append('')
+        
+        return '\n'.join(formatted_lines)
 
 class DocumentGenerator:
     def __init__(self, client: OpenAI, prompt_manager: PromptManager):
         self.client = client
         self.prompt_manager = prompt_manager
         self.max_tokens_per_request = 4000
+        self.document_cleaner = DocumentCleaner()
     
     def generate_document(self, project: Dict, document_type: str, 
                          detail_level: str = "Comprehensive",
@@ -28,7 +222,20 @@ class DocumentGenerator:
                 include_diagrams, format_tables
             )
         
-        return document
+        # Clean and format the document
+        cleaned_document = self.document_cleaner.clean_and_format_markdown(document)
+        
+        # Generate DOCX file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        docx_filename = f"{document_type.replace(' ', '_')}_{detail_level}_{timestamp}.docx"
+        output_dir = "generated_documents"
+        os.makedirs(output_dir, exist_ok=True)
+        docx_path = os.path.join(output_dir, docx_filename)
+        
+        self.document_cleaner.convert_text_to_formatted_docx(cleaned_document, docx_path)
+        print(f"Generated DOCX file: {docx_path}")
+        
+        return cleaned_document
     
     def _generate_comprehensive_document(self, project: Dict, document_type: str, 
                                         project_name: str, project_details: str,
@@ -155,7 +362,7 @@ INSTRUCTIONS: {section_instructions}
                                "SWOT Analysis Report"]:
                 model = "gpt-4"
             else:
-                model = "gpt-3.5-turbo"
+                model = "gpt-4"
             
             response = self.client.chat.completions.create(
                 model=model,
@@ -230,38 +437,7 @@ CRITICAL TABLE FORMATTING:
 """
         
         if document_type == "Business Requirements Document (BRD)":
-            if section_name == "3. Project Scope":
-                instructions += """
-REQUIRED TABLES:
-Table Title: In-Scope Items
-Item ID    DESCRIPTION    PRIORITY    NOTES
-IS-001    [Description]    High    [Notes]
-
-Include 8-10 in-scope items covering different functional areas.
-
-Table Title: Out-of-Scope Items
-Item ID    DESCRIPTION    REASON    NOTES
-OS-001    [Description]    [Reason]    [Notes]
-
-Include 6-8 out-of-scope items with clear justifications.
-
-Table Title: Scope Boundaries
-BOUNDARY TYPE    DESCRIPTION    CONSTRAINTS
-Technical    [Technical boundaries]    [Constraints]
-
-Include 4-6 scope boundaries covering technical, functional, temporal, and resource aspects.
-"""
-            elif section_name == "4. Business Requirements":
-                instructions += """
-REQUIRED TABLE:
-Table Title: Business Requirements
-
-REQ ID    DESCRIPTION    PRIORITY    STATUS    TRACEABILITY
-BR-001    [Description]    High    Proposed    OBJ-001
-
-Include 10-12 business requirements covering different business processes and user needs.
-"""
-            elif section_name == "7. Cost-Benefit Analysis":
+            if section_name == "7. Cost-Benefit Analysis":
                 instructions += """
 REQUIRED TABLES:
 Table Title: Cost Breakdown
@@ -300,16 +476,6 @@ REQUIREMENT    BUSINESS VALUE    TECHNICAL COMPLEXITY    PRIORITY
 FR-001    High    Medium    High
 
 Include 8-10 requirements in the priority matrix with clear business value and complexity assessments.
-"""
-            elif section_name == "3. User Stories & Use Cases":
-                instructions += """
-REQUIRED TABLE:
-Table Title: User Stories
-
-STORY ID    AS A [ROLE]    I WANT [FEATURE]    SO THAT [BENEFIT]
-US-001    [User type]    [Goal]    [Reason]
-
-Include 10-12 user stories covering different user roles and key system features.
 """
             elif section_name == "4. Data & Integration Requirements":
                 instructions += """
@@ -555,12 +721,6 @@ Summarize 3-4 key items in each SWOT category for strategic analysis.
             if section_name in ["1. Introduction & System Context", "2. Functional Requirements"]:
                 return diagram_instructions + "\nCreate process flow diagrams for key user interactions."
         
-        elif document_type == "Technical Specification Document":
-            if section_name == "2. System Architecture":
-                return diagram_instructions + "\nCreate a system architecture diagram with components and data flow."
-            elif section_name == "4. API Specifications":
-                return diagram_instructions + "\nCreate sequence diagrams for key API interactions."
-        
         elif document_type == "Non-Functional Requirements (NFR)":
             if section_name in ["1. Performance", "2. Security"]:
                 return diagram_instructions + "\nCreate diagrams showing performance/scalability or security layers."
@@ -599,15 +759,6 @@ Summarize 3-4 key items in each SWOT category for strategic analysis.
                 {"name": "4. Data & Integration Requirements", "instructions": "Define data models, storage, and system integrations."},
                 {"name": "5. Conclusion", "instructions": "Summarize functional capabilities and implementation approach."}
             ],
-            "Technical Specification Document": [
-                {"name": "1. Introduction", "instructions": "Define technical scope, architecture overview, and technology stack."},
-                {"name": "2. System Architecture", "instructions": "Detail system components, layers, and design patterns."},
-                {"name": "3. Database Design", "instructions": "Specify database schema, tables, relationships, and queries."},
-                {"name": "4. API Specifications", "instructions": "Define endpoints, request/response formats, and protocols."},
-                {"name": "5. Component Design", "instructions": "Detail modules, classes, interfaces, and algorithms."},
-                {"name": "6. Security & Performance", "instructions": "Specify security measures, performance targets, and monitoring."},
-                {"name": "7. Conclusion", "instructions": "Summarize technical approach and implementation considerations."}
-            ],
             "Non-Functional Requirements (NFR)": [
                 {"name": "1. Performance", "instructions": "Specify response times, throughput, scalability, and load handling."},
                 {"name": "2. Security", "instructions": "Define authentication, authorization, encryption, and compliance requirements."},
@@ -622,7 +773,7 @@ Summarize 3-4 key items in each SWOT category for strategic analysis.
                 {"name": "4. Prioritization", "instructions": "Prioritize stories based on value, effort, and dependencies."}
             ],
             "Stakeholder Analysis Matrix": [
-                {"name": "1. Introduction", "instructions": "define purpose and scope of stakeholder analysis."},
+                {"name": "1. Introduction", "instructions": "Define purpose and scope of stakeholder analysis."},
                 {"name": "2. Power vs Interest", "instructions": "Analyze stakeholder influence and interest levels."},
                 {"name": "3. Engagement Strategy", "instructions": "Define communication and engagement approaches for each stakeholder."},
                 {"name": "4. Expectations Management", "instructions": "Document stakeholder expectations and concerns."}
@@ -685,95 +836,13 @@ Summarize 3-4 key items in each SWOT category for strategic analysis.
         for term, definition in glossaries.items():
             appendices += f"- **{term}:** {definition}\n"
         
-       
-        
-        return appendices
-    
-    def _get_general_prompt(self, document_type: str, project_name: str, project_details: str, detail_level: str) -> str:
-        """Get general prompt"""
-        
-        return f"""
-        Generate a {detail_level} {document_type} for: {project_name}
-        
-        PROJECT DETAILS: {project_details}
-        
-        Create a professional, well-structured document.
-        """
-    
-    def _generate_content(self, prompt: str, detail_level: str) -> str:
-        """Generate document content"""
-        try:
-            max_tokens = 3000 if "Comprehensive" in detail_level else 2000
-            
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a senior Business Analyst."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=max_tokens
-            )
-            
-            content = response.choices[0].message.content
-            print(f"Generated {len(content.split())} words")
-            
-            return content
-            
-        except Exception as e:
-            print(f"Error: {str(e)}")
-            return f"# Document Generation Error\n\nError: {str(e)}"
-    
-    def _format_document(self, document: str, document_type: str, project_name: str, 
-                        detail_level: str, format_tables: bool) -> str:
-        """Format the generated document"""
-        header = f"""# {document_type}
-        
-## Project: {project_name}
+        appendices += f"""
+### Appendix C: Revision History
 
----
-
+| Version | Date | Author | Changes | Status |
+|---------|------|--------|---------|--------|
+| 1.0 | {datetime.now().strftime('%Y-%m-%d')} | AI Business Analyst | Initial Draft | Draft |
+| 1.1 | {datetime.now().strftime('%Y-%m-%d')} | AI Business Analyst | Added diagrams and tables | Review |
 """
-        
-        formatted_document = header + document
-        
-        if format_tables:
-            formatted_document = self._clean_table_formatting(formatted_document)
-        
-        return formatted_document
-    
-    def _generate_appendices(self, project: Dict, document_type: str) -> str:
-        """Generate appendices"""
-        sections = project.get("sections", {})
-        
-        appendices = """
-
----
-
-## Appendices
-
-### Appendix A: Project Reference
-
-"""
-        
-        for section_name, section_content in sections.items():
-            if isinstance(section_content, str) and section_content.strip():
-                appendices += f"#### {section_name}\n\n"
-                appendices += f"{section_content[:500]}...\n\n"
-        
-        appendices += "\n### Appendix B: Glossary\n\n"
-        
-        glossaries = {
-            "BRD": "Business Requirements Document",
-            "FRD": "Functional Requirements Document",
-            "NFR": "Non-Functional Requirements",
-            "KPI": "Key Performance Indicator",
-            "SLA": "Service Level Agreement",
-            "RACI": "Responsible, Accountable, Consulted, Informed"
-        }
-        
-        for term, definition in glossaries.items():
-            appendices += f"- **{term}:** {definition}\n"
-        
         
         return appendices
