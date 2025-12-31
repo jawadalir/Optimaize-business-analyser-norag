@@ -3,23 +3,83 @@ import json
 import os
 from datetime import datetime
 import base64
+import traceback
+import sys
 from project_selector import ProjectSelector
 from ba_agent import BusinessAnalystAgent
 
-st.cache_resource.clear()  # Clear ALL caches
-st.cache_data.clear()
+# Clear ALL caches
+try:
+    st.cache_resource.clear()
+    st.cache_data.clear()
+except Exception as e:
+    st.warning(f"Could not clear caches: {str(e)}")
 
 # Page configuration
-st.set_page_config(
-    page_title="Business Analyst Agent",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+try:
+    st.set_page_config(
+        page_title="Business Analyst Agent",
+        page_icon="🤖",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+except Exception as e:
+    st.warning(f"Page configuration issue: {str(e)}")
 
 # Custom CSS for better display - INCLUDING RADIO BUTTON STYLING
 st.markdown("""
 <style>
+    /* Error Message Styling */
+    .error-container {
+        background-color: #f8d7da;
+        border: 2px solid #f5c6cb;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+        color: #721c24;
+    }
+    
+    .error-title {
+        font-weight: bold;
+        font-size: 1.1rem;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .error-details {
+        font-size: 0.9rem;
+        color: #721c24;
+        background-color: #f5c6cb;
+        padding: 10px;
+        border-radius: 4px;
+        margin-top: 10px;
+        border-left: 4px solid #dc3545;
+        display: none;
+    }
+    
+    .error-toggle {
+        color: #0056b3;
+        cursor: pointer;
+        font-size: 0.8rem;
+        margin-top: 5px;
+        text-decoration: underline;
+    }
+    
+    .error-toggle:hover {
+        color: #003d82;
+    }
+    
+    .warning-container {
+        background-color: #fff3cd;
+        border: 2px solid #ffeaa7;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+        color: #856404;
+    }
+    
     /* Radio Button Styling */
     .radio-group-custom {
         margin: 15px 0;
@@ -437,130 +497,184 @@ st.markdown("""
         }
     }
 </style>
+
+<script>
+function toggleErrorDetails(id) {
+    var element = document.getElementById(id);
+    if (element.style.display === "none" || element.style.display === "") {
+        element.style.display = "block";
+    } else {
+        element.style.display = "none";
+    }
+}
+</script>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-def init_session_state():
-    if 'agent' not in st.session_state:
-        st.session_state.agent = BusinessAnalystAgent()
-    
-    if 'project_selector' not in st.session_state:
-        st.session_state.project_selector = ProjectSelector()
-    
-    if 'selected_project' not in st.session_state:
-        st.session_state.selected_project = None
-    
-    if 'current_project_name' not in st.session_state:
-        st.session_state.current_project_name = ""
-    
-    # Chat settings
-    if 'response_style' not in st.session_state:
-        st.session_state.response_style = "detailed"
-    
-    if 'response_scope' not in st.session_state:
-        st.session_state.response_scope = "specific"
-    
-    # Chat input
-    if 'user_input' not in st.session_state:
-        st.session_state.user_input = ""
-    
-    # Auto-send flag for suggestions
-    if 'auto_send' not in st.session_state:
-        st.session_state.auto_send = False
-    
-    # Show/hide chat history
-    if 'show_chat_history' not in st.session_state:
-        st.session_state.show_chat_history = False
-    
-    # Store messages for current session
-    if 'session_messages' not in st.session_state:
-        st.session_state.session_messages = {}
-    
-    # Store latest response
-    if 'latest_response' not in st.session_state:
-        st.session_state.latest_response = ""
-    
-    # Store generated documents
-    if 'generated_documents' not in st.session_state:
-        st.session_state.generated_documents = {}
-    
-    # Store last document for download
-    if 'last_document' not in st.session_state:
-        st.session_state.last_document = None
-    if 'last_document_name' not in st.session_state:
-        st.session_state.last_document_name = ""
-    
-    # Document generation progress
-    if 'doc_generation_progress' not in st.session_state:
-        st.session_state.doc_generation_progress = 0
-    
-    # Document selection state
-    if 'selected_document_type' not in st.session_state:
-        st.session_state.selected_document_type = None
-    
-    if 'document_generation_form' not in st.session_state:
-        st.session_state.document_generation_form = {}
-    
-    # Initialize document form values
-    if 'doc_detail_level' not in st.session_state:
-        st.session_state.doc_detail_level = "Comprehensive"
-    
-    # if 'doc_include_diagrams' not in st.session_state:
-    #     st.session_state.doc_include_diagrams = True
-    
-    if 'doc_format_tables' not in st.session_state:
-        st.session_state.doc_format_tables = True
-    
-    if 'doc_validation_errors' not in st.session_state:
-        st.session_state.doc_validation_errors = {}
+# Global error display function
+def display_error(error_msg, detailed_error=None, error_type="error"):
+    """Display error messages without blocking the app"""
+    try:
+        error_id = f"error_{datetime.now().strftime('%H%M%S%f')}"
+        
+        if error_type == "error":
+            st.markdown(f"""
+            <div class="error-container">
+                <div class="error-title">⚠️ Error: {error_msg}</div>
+                <div class="error-toggle" onclick="toggleErrorDetails('{error_id}')">
+                    Click here to view technical details
+                </div>
+                <div id="{error_id}" class="error-details">
+                    {detailed_error or "No additional details available"}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div class="warning-container">
+                <div class="error-title">⚠️ Warning: {error_msg}</div>
+                {f'<div style="font-size: 0.9rem; margin-top: 5px;">{detailed_error}</div>' if detailed_error else ''}
+            </div>
+            """, unsafe_allow_html=True)
+    except Exception as e:
+        # Fallback to simple error display
+        st.error(f"Error: {error_msg}")
 
-init_session_state()
+# Safe initialization function
+def safe_initialize():
+    """Initialize session state with error handling"""
+    try:
+        if 'agent' not in st.session_state:
+            st.session_state.agent = BusinessAnalystAgent()
+        
+        if 'project_selector' not in st.session_state:
+            st.session_state.project_selector = ProjectSelector()
+        
+        if 'selected_project' not in st.session_state:
+            st.session_state.selected_project = None
+        
+        if 'current_project_name' not in st.session_state:
+            st.session_state.current_project_name = ""
+        
+        # Chat settings
+        if 'response_style' not in st.session_state:
+            st.session_state.response_style = "detailed"
+        
+        if 'response_scope' not in st.session_state:
+            st.session_state.response_scope = "specific"
+        
+        # Chat input
+        if 'user_input' not in st.session_state:
+            st.session_state.user_input = ""
+        
+        # Auto-send flag for suggestions
+        if 'auto_send' not in st.session_state:
+            st.session_state.auto_send = False
+        
+        # Show/hide chat history
+        if 'show_chat_history' not in st.session_state:
+            st.session_state.show_chat_history = False
+        
+        # Store messages for current session
+        if 'session_messages' not in st.session_state:
+            st.session_state.session_messages = {}
+        
+        # Store latest response
+        if 'latest_response' not in st.session_state:
+            st.session_state.latest_response = ""
+        
+        # Store generated documents
+        if 'generated_documents' not in st.session_state:
+            st.session_state.generated_documents = {}
+        
+        # Store last document for download
+        if 'last_document' not in st.session_state:
+            st.session_state.last_document = None
+        if 'last_document_name' not in st.session_state:
+            st.session_state.last_document_name = ""
+        
+        # Document generation progress
+        if 'doc_generation_progress' not in st.session_state:
+            st.session_state.doc_generation_progress = 0
+        
+        # Document selection state
+        if 'selected_document_type' not in st.session_state:
+            st.session_state.selected_document_type = None
+        
+        if 'document_generation_form' not in st.session_state:
+            st.session_state.document_generation_form = {}
+        
+        # Initialize document form values
+        if 'doc_detail_level' not in st.session_state:
+            st.session_state.doc_detail_level = "Comprehensive"
+        
+        if 'doc_format_tables' not in st.session_state:
+            st.session_state.doc_format_tables = True
+        
+        if 'doc_validation_errors' not in st.session_state:
+            st.session_state.doc_validation_errors = {}
+            
+        if 'app_errors' not in st.session_state:
+            st.session_state.app_errors = []
+            
+    except Exception as e:
+        display_error("Failed to initialize session state", str(e))
+        # Set minimal defaults to keep app running
+        st.session_state.selected_project = None
+        st.session_state.session_messages = {}
 
 # Function to clean markdown formatting
 def clean_markdown_formatting(text):
     """Remove markdown formatting from text"""
-    if not text:
-        return ""
-    
-    # Remove markdown headers
-    lines = text.split('\n')
-    cleaned_lines = []
-    
-    for line in lines:
-        # Remove markdown headers (###, ##, #)
-        if line.startswith('# '):
-            line = line[2:].strip()
-        elif line.startswith('## '):
-            line = line[3:].strip()
-        elif line.startswith('### '):
-            line = line[4:].strip()
-        elif line.startswith('#### '):
-            line = line[5:].strip()
+    try:
+        if not text:
+            return ""
         
-        # Remove bold (**text**)
-        line = line.replace('**', '')
+        # Remove markdown headers
+        lines = text.split('\n')
+        cleaned_lines = []
         
-        # Remove asterisks for emphasis
-        line = line.replace('*', '')
+        for line in lines:
+            # Remove markdown headers (###, ##, #)
+            if line.startswith('# '):
+                line = line[2:].strip()
+            elif line.startswith('## '):
+                line = line[3:].strip()
+            elif line.startswith('### '):
+                line = line[4:].strip()
+            elif line.startswith('#### '):
+                line = line[5:].strip()
+            
+            # Remove bold (**text**)
+            line = line.replace('**', '')
+            
+            # Remove asterisks for emphasis
+            line = line.replace('*', '')
+            
+            cleaned_lines.append(line)
         
-        cleaned_lines.append(line)
-    
-    return '\n'.join(cleaned_lines)
+        return '\n'.join(cleaned_lines)
+    except Exception as e:
+        display_error("Error cleaning markdown formatting", str(e))
+        return text or ""
 
 # Function to clean response text for display
 def clean_response_text(text):
     """Remove unwanted formatting and extract clean text"""
-    if not text:
-        return ""
-    
-    # Clean markdown formatting
-    text = clean_markdown_formatting(text)
-    
-    # Remove HTML tags if any
-    import re
-    text = re.sub(r'<[^>]+>', '', text)
-    
-    return text
+    try:
+        if not text:
+            return ""
+        
+        # Clean markdown formatting
+        text = clean_markdown_formatting(text)
+        
+        # Remove HTML tags if any
+        import re
+        text = re.sub(r'<[^>]+>', '', text)
+        
+        return text
+    except Exception as e:
+        display_error("Error cleaning response text", str(e))
+        return text or ""
 
 # Function to create a Word document from text
 def create_comprehensive_word_document(content, filename, project):
@@ -735,9 +849,10 @@ def create_comprehensive_word_document(content, filename, project):
         
     except ImportError:
         # Fallback to simple document if python-docx not installed
+        display_error("python-docx not installed, using simple format", error_type="warning")
         return create_simple_word_document(content, filename, project)
     except Exception as e:
-        st.error(f"Error creating Word document: {str(e)}")
+        display_error("Error creating comprehensive Word document", str(e))
         return create_simple_word_document(content, filename, project)
 
 def create_simple_word_document(text, filename, project):
@@ -789,698 +904,809 @@ def create_simple_word_document(text, filename, project):
         doc_stream.seek(0)
         return doc_stream
     except ImportError:
-        st.warning("python-docx library not installed. Install it with: pip install python-docx")
+        display_error("python-docx library not installed", "Install it with: pip install python-docx", "warning")
         return None
     except Exception as e:
-        st.error(f"Error creating Word document: {str(e)}")
+        display_error("Error creating simple Word document", str(e))
         return None
 
 # Function to format document content properly
 def format_document_content(content, doc_type):
     """Format document content to remove AI-generated markdown"""
-    if not content:
-        return ""
-    
-    # First clean markdown
-    content = clean_markdown_formatting(content)
-    
-    # Specific formatting for different document types
-    lines = content.split('\n')
-    formatted_lines = []
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        # Remove any remaining markdown indicators
-        line = line.replace('####', '').replace('###', '').replace('##', '').replace('#', '')
-        line = line.replace('**', '').replace('*', '')
+    try:
+        if not content:
+            return ""
         
-        # Format based on document type
-        if doc_type == "SWOT Analysis Report":
-            if any(word in line.lower() for word in ['strength', 'weakness', 'opportunity', 'threat', 'conclusion']):
-                formatted_lines.append(f"\n{line.upper()}\n" + "="*len(line))
-            elif line.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.')):
-                formatted_lines.append(f"  {line}")
+        # First clean markdown
+        content = clean_markdown_formatting(content)
+        
+        # Specific formatting for different document types
+        lines = content.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Remove any remaining markdown indicators
+            line = line.replace('####', '').replace('###', '').replace('##', '').replace('#', '')
+            line = line.replace('**', '').replace('*', '')
+            
+            # Format based on document type
+            if doc_type == "SWOT Analysis Report":
+                if any(word in line.lower() for word in ['strength', 'weakness', 'opportunity', 'threat', 'conclusion']):
+                    formatted_lines.append(f"\n{line.upper()}\n" + "="*len(line))
+                elif line.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.')):
+                    formatted_lines.append(f"  {line}")
+                else:
+                    formatted_lines.append(line)
+            elif doc_type == "Business Requirements Document (BRD)":
+                if any(word in line.lower() for word in ['executive', 'overview', 'objective', 'scope', 'requirement', 'stakeholder', 'assumption', 'constraint']):
+                    formatted_lines.append(f"\n{line.upper()}\n" + "-"*len(line))
+                else:
+                    formatted_lines.append(line)
+            elif doc_type == "Functional Requirements Document (FRD)":
+                if any(word in line.lower() for word in ['functional', 'requirement', 'specification', 'interface', 'system', 'module']):
+                    formatted_lines.append(f"\n{line.upper()}\n")
+                else:
+                    formatted_lines.append(line)
+            elif doc_type == "Non-Functional Requirements (NFR)":
+                if any(word in line.lower() for word in ['performance', 'security', 'scalability', 'availability', 'reliability']):
+                    formatted_lines.append(f"\n{line.upper()}\n")
+                else:
+                    formatted_lines.append(line)
+            elif doc_type == "Process Flow Diagrams (BPMN)":
+                if any(word in line.lower() for word in ['process', 'flow', 'diagram', 'activity', 'decision', 'gateway']):
+                    formatted_lines.append(f"\n{line.upper()}\n")
+                else:
+                    formatted_lines.append(line)
             else:
                 formatted_lines.append(line)
-        elif doc_type == "Business Requirements Document (BRD)":
-            if any(word in line.lower() for word in ['executive', 'overview', 'objective', 'scope', 'requirement', 'stakeholder', 'assumption', 'constraint']):
-                formatted_lines.append(f"\n{line.upper()}\n" + "-"*len(line))
-            else:
-                formatted_lines.append(line)
-        elif doc_type == "Functional Requirements Document (FRD)":
-            if any(word in line.lower() for word in ['functional', 'requirement', 'specification', 'interface', 'system', 'module']):
-                formatted_lines.append(f"\n{line.upper()}\n")
-            else:
-                formatted_lines.append(line)
-        elif doc_type == "Non-Functional Requirements (NFR)":
-            if any(word in line.lower() for word in ['performance', 'security', 'scalability', 'availability', 'reliability']):
-                formatted_lines.append(f"\n{line.upper()}\n")
-            else:
-                formatted_lines.append(line)
-        elif doc_type == "Process Flow Diagrams (BPMN)":
-            if any(word in line.lower() for word in ['process', 'flow', 'diagram', 'activity', 'decision', 'gateway']):
-                formatted_lines.append(f"\n{line.upper()}\n")
-            else:
-                formatted_lines.append(line)
-        else:
-            formatted_lines.append(line)
-    
-    return '\n'.join(formatted_lines)
+        
+        return '\n'.join(formatted_lines)
+    except Exception as e:
+        display_error("Error formatting document content", str(e))
+        return content or ""
 
 # Function to get or create session messages for a project
 def get_session_messages(project_name):
     """Get messages for current session"""
-    if project_name not in st.session_state.session_messages:
-        st.session_state.session_messages[project_name] = []
-    return st.session_state.session_messages[project_name]
+    try:
+        if project_name not in st.session_state.session_messages:
+            st.session_state.session_messages[project_name] = []
+        return st.session_state.session_messages[project_name]
+    except Exception as e:
+        display_error("Error getting session messages", str(e))
+        return []
 
 # Function to add message to session
 def add_to_session_messages(project_name, role, content, timestamp=None):
     """Add message to session messages"""
-    messages = get_session_messages(project_name)
-    messages.append({
-        "role": role,
-        "content": clean_response_text(content),
-        "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
-    # Keep only last 20 messages in session
-    st.session_state.session_messages[project_name] = messages[-20:]
+    try:
+        messages = get_session_messages(project_name)
+        messages.append({
+            "role": role,
+            "content": clean_response_text(content),
+            "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        # Keep only last 20 messages in session
+        st.session_state.session_messages[project_name] = messages[-20:]
+    except Exception as e:
+        display_error("Error adding message to session", str(e))
 
 # Function to validate document generation form
 def validate_document_form():
     """Validate document generation form"""
-    errors = {}
-    
-    if not st.session_state.selected_document_type:
-        errors['document_type'] = "Please select a document type"
-    
-    if not st.session_state.selected_project:
-        errors['project'] = "Please select a project first"
-    
-    st.session_state.doc_validation_errors = errors
-    return len(errors) == 0
+    try:
+        errors = {}
+        
+        if not st.session_state.selected_document_type:
+            errors['document_type'] = "Please select a document type"
+        
+        if not st.session_state.selected_project:
+            errors['project'] = "Please select a project first"
+        
+        st.session_state.doc_validation_errors = errors
+        return len(errors) == 0
+    except Exception as e:
+        display_error("Error validating document form", str(e))
+        return False
 
-# Function to generate document with custom HTML radio form
-def generate_document_with_form():
-    """Generate document using the HTML form selection"""
-    if not validate_document_form():
-        return
-    
-    project = st.session_state.selected_project
-    document_type = st.session_state.selected_document_type
-    
-    with st.spinner(f"🧠 Generating {document_type}..."):
-        document = st.session_state.agent.generate_document(
+# Safe function to get projects
+def safe_get_projects():
+    """Safely get projects with error handling"""
+    try:
+        return st.session_state.project_selector.get_all_projects()
+    except Exception as e:
+        display_error("Could not load projects", str(e))
+        return []
+
+# Safe function to analyze with options
+def safe_analyze_with_options(project, user_input, response_style="detailed", scope="specific"):
+    """Safely analyze with error handling"""
+    try:
+        return st.session_state.agent.analyze_with_options(
+            project,
+            user_input,
+            response_style=response_style,
+            scope=scope
+        )
+    except Exception as e:
+        error_msg = f"Analysis failed: {str(e)}"
+        display_error(error_msg, traceback.format_exc())
+        return f"I encountered an error while analyzing your request. Please try again or rephrase your question.\n\nError: {str(e)}"
+
+# Safe function to generate document
+def safe_generate_document(project, document_type, format_tables=True):
+    """Safely generate document with error handling"""
+    try:
+        return st.session_state.agent.generate_document(
             project=project,
             document_type=document_type,
-            detail_level=st.session_state.doc_detail_level,
-            # include_diagrams=st.session_state.doc_include_diagrams,
-            # format_tables=st.session_state.doc_format_tables
+            format_tables=format_tables
+        )
+    except Exception as e:
+        error_msg = f"Document generation failed: {str(e)}"
+        display_error(error_msg, traceback.format_exc())
+        return f"# Error Generating Document\n\nI encountered an error while generating the {document_type}.\n\n**Error Details:** {str(e)}\n\nPlease try again or select a different document type."
+
+# Header with error boundary
+try:
+    st.title("🤖 Business Analyst Agent")
+    st.markdown("AI-powered business analysis for your projects")
+except Exception as e:
+    display_error("Error displaying header", str(e))
+
+# Initialize session state safely
+try:
+    safe_initialize()
+except Exception as e:
+    display_error("Critical initialization error", str(e))
+    st.stop()
+
+# Sidebar with error boundary
+try:
+    with st.sidebar:
+        st.markdown("## 📋 Project Management")
+        
+        # Get all projects safely
+        projects = safe_get_projects()
+        project_names = ["-- Select a Project --"]
+        if projects:
+            project_names.extend([p.get("product_name", "Unknown") for p in projects])
+        
+        # Project selection
+        selected_project_name = st.selectbox(
+            "Select a project:",
+            project_names,
+            index=0
         )
         
-        # Save to folder
-        filepath = st.session_state.agent.save_document_to_folder(
-            document=document,
-            project_name=project["product_name"],
-            document_type=document_type,
-            detail_level=st.session_state.doc_detail_level
-        )
+        # Handle project selection
+        if selected_project_name != "-- Select a Project --":
+            try:
+                if selected_project_name != st.session_state.current_project_name:
+                    st.session_state.selected_project = st.session_state.project_selector.get_project_by_name(selected_project_name)
+                    st.session_state.current_project_name = selected_project_name
+                    st.session_state.user_input = ""
+                    st.rerun()
+            except Exception as e:
+                display_error("Error selecting project", str(e))
         
-        # Store for download
-        st.session_state.last_document = document
-        st.session_state.last_document_name = f"{project['product_name']}_{document_type.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-        
-        # Store in generated documents
-        if project['product_name'] not in st.session_state.generated_documents:
-            st.session_state.generated_documents[project['product_name']] = {}
-        st.session_state.generated_documents[project['product_name']][document_type] = document
-        
-        st.success(f"✅ {document_type} generated successfully!")
-        st.info(f"📁 Saved to: {filepath}")
-
-# Header
-st.title("🤖 Business Analyst Agent")
-st.markdown("AI-powered business analysis for your projects")
-
-# Sidebar
-with st.sidebar:
-    st.markdown("## 📋 Project Management")
-    
-    # Get all projects
-    projects = st.session_state.project_selector.get_all_projects()
-    project_names = [p["product_name"] for p in projects]
-    
-    # Project selection
-    selected_project_name = st.selectbox(
-        "Select a project:",
-        ["-- Select a Project --"] + project_names,
-        index=0
-    )
-    
-    # Handle project selection
-    if selected_project_name != "-- Select a Project --":
-        if selected_project_name != st.session_state.current_project_name:
-            st.session_state.selected_project = st.session_state.project_selector.get_project_by_name(selected_project_name)
-            st.session_state.current_project_name = selected_project_name
-            st.session_state.user_input = ""
-            st.rerun()
-    
-    if st.session_state.selected_project:
-        project = st.session_state.selected_project
-        
-        st.markdown(f"### 🎯 {project['product_name']}")
-        
-        # Get actual chat history from agent
-        actual_history = st.session_state.agent.get_project_history(project['product_name'])
-        st.metric("Total Messages", len(actual_history))
-        
-        st.markdown("---")
-        
-        # Response Settings
-        st.markdown("### ⚙️ Response Settings")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            style = st.radio(
-                "Style:",
-                ["Detailed", "Simple"],
-                index=0 if st.session_state.response_style == "detailed" else 1,
-                key="style_radio"
-            )
-            st.session_state.response_style = style.lower()
-        
-        with col2:
-            scope = st.radio(
-                "Scope:",
-                ["Specific", "General"],
-                index=0 if st.session_state.response_scope == "specific" else 1,
-                key="scope_radio"
-            )
-            st.session_state.response_scope = scope.lower()
-        
-        # Show current memory count
-        col3, col4 = st.columns(2)
-        with col3:
-            if st.session_state.selected_project:
-                memories = st.session_state.agent.get_all_project_memories(
-                    st.session_state.current_project_name
-                )
-                st.metric("Stored Facts", len(memories))
-        
-        st.markdown("---")
-        
-        # Quick Actions
-        st.markdown("### ⚡ Quick Actions")
-        
-        if st.button("📋 Requirements", use_container_width=True):
-            st.session_state.user_input = "Perform comprehensive requirements analysis"
-            st.session_state.auto_send = True
-            st.rerun()
-        
-        if st.button("⚠️ Risk Assessment", use_container_width=True):
-            st.session_state.user_input = "Perform risk assessment"
-            st.session_state.auto_send = True
-            st.rerun()
-        
-        if st.button("👥 Stakeholders", use_container_width=True):
-            st.session_state.user_input = "Analyze stakeholders"
-            st.session_state.auto_send = True
-            st.rerun()
-        
-        st.markdown("---")
-        
-        # Chat Management
-        st.markdown("### 💬 Chat Management")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🗑️ Clear History", use_container_width=True):
-                # Clear both agent history and session messages
-                st.session_state.agent.clear_project_history(project['product_name'])
-                if project['product_name'] in st.session_state.session_messages:
-                    st.session_state.session_messages[project['product_name']] = []
-                st.session_state.latest_response = ""
-                st.success(f"Chat history cleared for {project['product_name']}")
-                st.rerun()
-        
-        with col2:
-            # Toggle chat history visibility
-            toggle_text = "📜 Show History" if not st.session_state.show_chat_history else "📜 Hide History"
-            if st.button(toggle_text, use_container_width=True):
-                st.session_state.show_chat_history = not st.session_state.show_chat_history
-                st.rerun()
-
-# Main Content Area
-if not st.session_state.selected_project:
-    # Welcome screen
-    st.info("👈 Select a project from the sidebar to begin analysis")
-    
-    # Show available projects
-    st.markdown("### Available Projects")
-    for project in projects:
-        with st.expander(f"📁 {project['product_name']}"):
-            sections = project.get('sections', {})
-            one_line = sections.get('One-Line Summary', sections.get('Solution', ''))
-            if isinstance(one_line, str) and len(one_line) > 200:
-                one_line = one_line[:200] + "..."
-            st.write(one_line)
-            if st.button(f"Select {project['product_name']}", key=f"select_{project['product_name']}"):
-                st.session_state.selected_project = project
-                st.session_state.current_project_name = project['product_name']
-                st.rerun()
-# In the Main Content Area section, replace everything after "Project is selected" with:
-
-else:
-    # Project is selected
-    project = st.session_state.selected_project
-    
-    # Project header
-    col1, col2, col3 = st.columns([3, 2, 1])
-    with col1:
-        st.markdown(f"### 💬 Chat: **{project['product_name']}**")
-    with col2:
-        # Style indicators
-        style_pill = "🟢 Detailed" if st.session_state.response_style == "detailed" else "⚪ Simple"
-        scope_pill = "🎯 Specific" if st.session_state.response_scope == "specific" else "🌐 General"
-        st.markdown(
-            f"<div style='display: flex; gap: 0.5rem; flex-wrap: wrap;'>"
-            f"<span class='style-pill active'>{style_pill}</span>"
-            f"<span class='style-pill active'>{scope_pill}</span>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-    with col3:
-        if st.button("🔄 Refresh"):
-            st.rerun()
-    
-    # Create tabs FIRST before using them
-    tab1, tab2, tab3 = st.tabs(["💬 Chat", "📄 Document Generation", "📊 Project Details"])
-    
-    with tab1:
-        # Get session messages for this project
-        session_messages = get_session_messages(project['product_name'])
-        
-        # --- QUICK SUGGESTIONS (ABOVE INPUT) ---
-        st.markdown("### 💡 Quick Suggestions")
-        
-        suggestions = [
-            ("What are the main business requirements?", "📋"),
-            ("Identify key stakeholders and their interests", "👥"),
-            ("What are the biggest implementation risks?", "⚠️"),
-            ("Suggest measurable success metrics/KPIs", "📊")
-        ]
-        
-        cols = st.columns(4)
-        for idx, (suggestion, icon) in enumerate(suggestions):
-            with cols[idx]:
-                if st.button(f"{icon} {suggestion[:18]}...", use_container_width=True, key=f"sugg_{idx}"):
-                    st.session_state.user_input = suggestion
+        if st.session_state.selected_project:
+            try:
+                project = st.session_state.selected_project
+                
+                st.markdown(f"### 🎯 {project['product_name']}")
+                
+                # Get actual chat history from agent
+                try:
+                    actual_history = st.session_state.agent.get_project_history(project['product_name'])
+                    st.metric("Total Messages", len(actual_history))
+                except:
+                    st.metric("Total Messages", 0)
+                
+                st.markdown("---")
+                
+                # Response Settings
+                st.markdown("### ⚙️ Response Settings")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    style = st.radio(
+                        "Style:",
+                        ["Detailed", "Simple"],
+                        index=0 if st.session_state.response_style == "detailed" else 1,
+                        key="style_radio"
+                    )
+                    st.session_state.response_style = style.lower()
+                
+                with col2:
+                    scope = st.radio(
+                        "Scope:",
+                        ["Specific", "General"],
+                        index=0 if st.session_state.response_scope == "specific" else 1,
+                        key="scope_radio"
+                    )
+                    st.session_state.response_scope = scope.lower()
+                
+                # Show current memory count
+                col3, col4 = st.columns(2)
+                with col3:
+                    if st.session_state.selected_project:
+                        try:
+                            memories = st.session_state.agent.get_all_project_memories(
+                                st.session_state.current_project_name
+                            )
+                            st.metric("Stored Facts", len(memories))
+                        except:
+                            st.metric("Stored Facts", 0)
+                
+                st.markdown("---")
+                
+                # Quick Actions
+                st.markdown("### ⚡ Quick Actions")
+                
+                if st.button("📋 Requirements", use_container_width=True):
+                    st.session_state.user_input = "Perform comprehensive requirements analysis"
                     st.session_state.auto_send = True
                     st.rerun()
-        
-        # --- CHAT INPUT (TOP SECTION) ---
-        st.markdown("### 💬 Your Question")
-        
-        # Handle auto-send from suggestions
-        if st.session_state.auto_send and st.session_state.user_input:
-            with st.spinner("🤔 Analyzing..."):
-                # Add user message to session
-                add_to_session_messages(project['product_name'], "user", st.session_state.user_input)
                 
-                # Get analysis from agent
-                response = st.session_state.agent.analyze_with_options(
-                    project,
-                    st.session_state.user_input,
-                    response_style=st.session_state.response_style,
-                    scope=st.session_state.response_scope
-                )
-                
-                # Add assistant response to session
-                add_to_session_messages(project['product_name'], "assistant", response)
-                
-                # Store latest response
-                st.session_state.latest_response = clean_response_text(response)
-                
-                # Clear auto-send flag
-                st.session_state.auto_send = False
-                st.session_state.user_input = ""
-                st.rerun()
-        
-        # Input field
-        user_input = st.text_area(
-            "Type your question:",
-            value=st.session_state.user_input,
-            placeholder=f"Ask about {project['product_name']}...",
-            height=80,
-            key="chat_input",
-            label_visibility="collapsed"
-        )
-        
-        # Send button
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            pass
-        with col2:
-            send_button = st.button("🚀 Send", use_container_width=True, type="primary")
-        
-        # Handle send button
-        if send_button and user_input.strip():
-            with st.spinner("🤔 Analyzing..."):
-                # Check if user is mentioning another project
-                detected_project = st.session_state.project_selector.detect_project_from_input(user_input)
-                
-                if detected_project and detected_project['product_name'] != st.session_state.current_project_name:
-                    # Switch to detected project
-                    st.info(f"🔍 Switching to: **{detected_project['product_name']}**")
-                    st.session_state.selected_project = detected_project
-                    st.session_state.current_project_name = detected_project['product_name']
-                    st.session_state.user_input = user_input
+                if st.button("⚠️ Risk Assessment", use_container_width=True):
+                    st.session_state.user_input = "Perform risk assessment"
+                    st.session_state.auto_send = True
                     st.rerun()
                 
-                # Add user message to session
-                add_to_session_messages(project['product_name'], "user", user_input)
+                if st.button("👥 Stakeholders", use_container_width=True):
+                    st.session_state.user_input = "Analyze stakeholders"
+                    st.session_state.auto_send = True
+                    st.rerun()
                 
-                # Get analysis from agent
-                response = st.session_state.agent.analyze_with_options(
-                    project,
-                    user_input,
-                    response_style=st.session_state.response_style,
-                    scope=st.session_state.response_scope
-                )
+                st.markdown("---")
                 
-                # Add assistant response to session
-                add_to_session_messages(project['product_name'], "assistant", response)
+                # Chat Management
+                st.markdown("### 💬 Chat Management")
                 
-                # Store latest response
-                st.session_state.latest_response = clean_response_text(response)
-                
-                # Clear input
-                st.session_state.user_input = ""
-                st.rerun()
-        
-        # Divider
-        st.markdown("---")
-        
-        # --- LATEST RESPONSE (BOLD AND CLEAR) ---
-        if st.session_state.latest_response or session_messages:
-            st.markdown("### 📋 **Latest Response**")
-            
-            # Get the latest assistant response
-            latest_response = st.session_state.latest_response
-            if not latest_response and session_messages:
-                # Find the latest assistant message
-                assistant_messages = [m for m in session_messages if m["role"] == "assistant"]
-                if assistant_messages:
-                    latest_response = assistant_messages[-1]["content"]
-            
-            if latest_response:
-                # Display in a styled box with bold, clear text
-                st.markdown(f"""
-                <div class="latest-response-box">
-                    <div class="latest-response-title">📋 Business Analyst Response</div>
-                    <div class="response-content">
-                        <strong>{latest_response[:500]}</strong>
-                        {latest_response[500:] if len(latest_response) > 500 else ''}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Download button for latest response as Word
-                col1, col2 = st.columns([3, 2])
+                col1, col2 = st.columns(2)
                 with col1:
-                    # Show timestamp for latest response
-                    if session_messages and session_messages[-1].get("timestamp"):
-                        st.caption(f"🕒 Generated: {session_messages[-1]['timestamp']}")
+                    if st.button("🗑️ Clear History", use_container_width=True):
+                        try:
+                            # Clear both agent history and session messages
+                            st.session_state.agent.clear_project_history(project['product_name'])
+                            if project['product_name'] in st.session_state.session_messages:
+                                st.session_state.session_messages[project['product_name']] = []
+                            st.session_state.latest_response = ""
+                            st.success(f"Chat history cleared for {project['product_name']}")
+                            st.rerun()
+                        except Exception as e:
+                            display_error("Error clearing history", str(e))
+                
                 with col2:
-                    # Create Word document for the response
-                    response_filename = f"{project['product_name']}_Response_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-                    word_doc = create_comprehensive_word_document(latest_response, response_filename, project)
-                    if word_doc:
-                        st.download_button(
-                            label="📄 Download as Word",
-                            data=word_doc,
-                            file_name=response_filename,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True
-                        )
-        
-        # --- CHAT HISTORY (HIDDEN BY DEFAULT) ---
-        if st.session_state.show_chat_history and len(session_messages) > 0:
-            st.markdown("---")
-            st.markdown("### 📜 Chat History")
-            
-            # Show all messages except the latest (which is already displayed above)
-            history_messages = session_messages[:-1] if len(session_messages) > 1 else []
-            
-            if history_messages:
-                # Reverse so newest appear at top
-                history_messages_reversed = list(reversed(history_messages))
-                
-                for msg in history_messages_reversed:
-                    if msg["role"] == "user":
-                        st.markdown(f"""
-                        <div class="chat-history-message chat-history-user">
-                            <strong>👤 You:</strong> {msg['content'][:150]}{'...' if len(msg['content']) > 150 else ''}
-                            <div class="timestamp">{msg.get('timestamp', '')}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"""
-                        <div class="chat-history-message chat-history-assistant">
-                            <strong>🤖 Business Analyst:</strong> {msg['content'][:150]}{'...' if len(msg['content']) > 150 else ''}
-                            <div class="timestamp">{msg.get('timestamp', '')}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Show full message in expander
-                    with st.expander("View full message"):
-                        if msg["role"] == "user":
-                            st.markdown(f"**You:** {msg['content']}")
-                        else:
-                            st.markdown(f"**Business Analyst:** {msg['content']}")
-            else:
-                st.info("No previous chat history.")
-        elif st.session_state.show_chat_history:
-            st.info("Start chatting to build history!")
-        
-        # Display stored memories if chat history is shown
-        if st.session_state.selected_project and st.session_state.show_chat_history:
-            # Get project memories
-            memories = st.session_state.agent.get_all_project_memories(
-                st.session_state.current_project_name
-            )
-            
-            if memories:
-                with st.expander("🧠 Stored Information (Click to view)"):
-                    for key, value in memories.items():
-                        st.markdown(f"**{key.title()}:** {value}")
-                    
-                    # Clear memories button
-                    if st.button("Clear Stored Information", key="clear_memories"):
-                        st.session_state.agent.clear_project_memories(
-                            st.session_state.current_project_name
-                        )
+                    # Toggle chat history visibility
+                    toggle_text = "📜 Show History" if not st.session_state.show_chat_history else "📜 Hide History"
+                    if st.button(toggle_text, use_container_width=True):
+                        st.session_state.show_chat_history = not st.session_state.show_chat_history
                         st.rerun()
-    
-    with tab2:
-        st.markdown("## 📄 Document Generation")
-        st.info("Select a document type and configure options to generate professional documents")
-        
-        # Document type selection using HTML grid
-        st.markdown("### 📋 Select Document Type")
-        
-        document_types = [
-            {
-                "type": "Business Requirements Document (BRD)",
-                "icon": "📋",
-                "description": "Comprehensive business requirements"
-            },
-            {
-                "type": "Functional Requirements Document (FRD)",
-                "icon": "⚙️",
-                "description": "Detailed functional specifications"
-            },
-            {
-                "type": "Non-Functional Requirements (NFR)",
-                "icon": "📊",
-                "description": "Performance, security, scalability"
-            },
-            
-            {
-                "type": "User Stories & Acceptance Criteria",
-                "icon": "👥",
-                "description": "User stories with acceptance criteria"
-            },
-            {
-                "type": "Stakeholder Analysis Matrix",
-                "icon": "🤝",
-                "description": "Stakeholder analysis & engagement"
-            },
-            {
-                "type": "SWOT Analysis Report",
-                "icon": "🔍",
-                "description": "Strengths, weaknesses, opportunities, threats"
-            },
-            {
-                "type": "Process Flow Diagrams (BPMN)",
-                "icon": "🔄",
-                "description": "Business process modeling"
-            },
-            
-            
-        ]
-        
-        # Create document selection grid
-        cols = st.columns(5)
-        for idx, doc_info in enumerate(document_types):
-            col_idx = idx % 5
-            with cols[col_idx]:
-                is_selected = st.session_state.selected_document_type == doc_info["type"]
-                card_class = "doc-card selected" if is_selected else "doc-card"
-                
-                st.markdown(f"""
-                <div class="{card_class}" onclick="document.getElementById('doc_{idx}').click()">
-                    <div style="font-size: 2rem; margin-bottom: 10px;">{doc_info['icon']}</div>
-                    <div class="doc-title">{doc_info['type'].split('(')[0].strip()}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # FIXED: Removed label_visibility parameter
-                if st.button(f"Select {doc_info['type'][:10]}", 
-                           key=f"doc_{idx}",
-                           type="primary" if is_selected else "secondary",
-                           use_container_width=True):
-                    st.session_state.selected_document_type = doc_info["type"]
-                    st.rerun()
-        
-        # Show selected document
-        if st.session_state.selected_document_type:
-            st.markdown(f"""
-            <div class="form-group-custom">
-                <div class="form-label-custom">✅ Selected Document</div>
-                <div style="font-size: 1.2rem; color: #2c3e50; padding: 10px; background: #e8f4fc; border-radius: 5px;">
-                    📄 <strong>{st.session_state.selected_document_type}</strong>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        
+                        
+            except Exception as e:
+                display_error("Error displaying project details", str(e))
+except Exception as e:
+    display_error("Sidebar error", str(e))
 
-        # Generate Button
-        st.markdown("---")
-        if st.button("🚀 Generate Document", type="primary", use_container_width=True):
-            if not st.session_state.selected_document_type:
-                st.error("❌ Please select a document type first!")
-            else:
-                # Generate document
-                with st.spinner(f"🧠 Generating {st.session_state.selected_document_type}..."):
-                    document = st.session_state.agent.generate_document(
-                        project=project,
-                        document_type=st.session_state.selected_document_type,
-                        # detail_level=st.session_state.doc_detail_level,
-                        # include_diagrams=st.session_state.doc_include_diagrams,
-                        format_tables=st.session_state.doc_format_tables
-                    )
-                    
-                    # Save to folder
-                    # filepath = st.session_state.agent.save_document_to_folder(
-                    #     document=document,
-                    #     project_name=project["product_name"],
-                    #     document_type=st.session_state.selected_document_type,
-                    #     detail_level=st.session_state.doc_detail_level
-                    # )
-                    
-                    # Store for download
-                    st.session_state.last_document = document
-                    st.session_state.last_document_name = f"{project['product_name']}_{st.session_state.selected_document_type.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-                    
-                    # Store in generated documents
-                    if project['product_name'] not in st.session_state.generated_documents:
-                        st.session_state.generated_documents[project['product_name']] = {}
-                    st.session_state.generated_documents[project['product_name']][st.session_state.selected_document_type] = document
-                    
-                    st.success(f"✅ {st.session_state.selected_document_type} generated successfully!")
-                    # st.info(f"📁 Saved to: {filepath}")
+# Main Content Area with comprehensive error handling
+try:
+    if not st.session_state.selected_project:
+        # Welcome screen
+        st.info("👈 Select a project from the sidebar to begin analysis")
         
-        # Display generated documents for this project
-        if project['product_name'] in st.session_state.generated_documents:
-            st.markdown("---")
-            st.markdown("### 📂 Generated Documents")
-            
-            for doc_type, doc_content in st.session_state.generated_documents[project['product_name']].items():
-                with st.expander(f"📄 {doc_type}"):
-                    # Show document metadata
-                    st.markdown(f"""
-                    <div class="document-meta">
-                        <span>📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</span>
-                        <span>📏 Pages: ~{len(doc_content.split())//500}</span>
-                        <span>🔤 Words: {len(doc_content.split())}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Show preview (first 3000 characters)
-                    preview_text = doc_content[:3000]
-                    if len(doc_content) > 3000:
-                        preview_text += "\n\n... [Document continues] ..."
-                    
-                    # Check for diagrams
-                    if "```mermaid" in preview_text:
-                        st.markdown("""
-                        <div class="diagram-placeholder">
-                            📊 <strong>Diagrams Included</strong>
-                            <p>This document contains Mermaid.js diagrams that will render in markdown viewers.</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    st.text_area(
-                        f"Preview of {doc_type}",
-                        value=preview_text,
-                        height=300,
-                        disabled=True,
-                        key=f"preview_{doc_type}"
-                    )
-                    
-                    # Download buttons
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        # Word download
-                        doc_filename = f"{project['product_name']}_{doc_type.replace(' ', '_')}.docx"
-                        word_doc = create_comprehensive_word_document(doc_content, doc_filename, project)
-                        if word_doc:
-                            st.download_button(
-                                label="📄 Word",
-                                data=word_doc,
-                                file_name=doc_filename,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                use_container_width=True,
-                                key=f"word_{doc_type}"
-                            )
-                    
-                    with col2:
-                        # Markdown download
-                        st.download_button(
-                            label="📝 Markdown",
-                            data=doc_content,
-                            file_name=f"{project['product_name']}_{doc_type.replace(' ', '_')}.md",
-                            mime="text/markdown",
-                            use_container_width=True,
-                            key=f"md_{doc_type}"
-                        )
-                    
-                    with col3:
-                        # PDF download (placeholder)
-                        if st.button("📄 PDF", use_container_width=True, key=f"pdf_{doc_type}"):
-                            st.info("PDF export coming soon!")
+        # Show available projects
+        st.markdown("### Available Projects")
+        if projects:
+            for project in projects:
+                try:
+                    with st.expander(f"📁 {project.get('product_name', 'Unknown Project')}"):
+                        sections = project.get('sections', {})
+                        one_line = sections.get('One-Line Summary', sections.get('Solution', ''))
+                        if isinstance(one_line, str) and len(one_line) > 200:
+                            one_line = one_line[:200] + "..."
+                        st.write(one_line)
+                        if st.button(f"Select {project.get('product_name', 'Project')}", key=f"select_{project.get('product_name', '')}"):
+                            try:
+                                st.session_state.selected_project = project
+                                st.session_state.current_project_name = project.get('product_name', '')
+                                st.rerun()
+                            except Exception as e:
+                                display_error("Error selecting project", str(e))
+                except Exception as e:
+                    display_error(f"Error displaying project {project.get('product_name', 'Unknown')}", str(e))
+        else:
+            st.warning("No projects available. Check if project data is loaded correctly.")
     
-    with tab3:
-        # Display project details
-        st.markdown("## 📊 Project Details")
-        
-        sections = project.get('sections', {})
-        
-        for section_name, section_content in sections.items():
-            with st.expander(f"**{section_name}**", expanded=(section_name in ["Problem Statement", "Solution"])):
-                st.write(section_content)
+    else:
+        # Project is selected
+        try:
+            project = st.session_state.selected_project
+            
+            # Project header
+            col1, col2, col3 = st.columns([3, 2, 1])
+            with col1:
+                st.markdown(f"### 💬 Chat: **{project.get('product_name', 'Unknown Project')}**")
+            with col2:
+                # Style indicators
+                style_pill = "🟢 Detailed" if st.session_state.response_style == "detailed" else "⚪ Simple"
+                scope_pill = "🎯 Specific" if st.session_state.response_scope == "specific" else "🌐 General"
+                st.markdown(
+                    f"<div style='display: flex; gap: 0.5rem; flex-wrap: wrap;'>"
+                    f"<span class='style-pill active'>{style_pill}</span>"
+                    f"<span class='style-pill active'>{scope_pill}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            with col3:
+                if st.button("🔄 Refresh"):
+                    st.rerun()
+            
+            # Create tabs
+            try:
+                tab1, tab2, tab3 = st.tabs(["💬 Chat", "📄 Document Generation", "📊 Project Details"])
+                
+                with tab1:
+                    try:
+                        # Get session messages for this project
+                        session_messages = get_session_messages(project.get('product_name', ''))
+                        
+                        # --- QUICK SUGGESTIONS (ABOVE INPUT) ---
+                        st.markdown("### 💡 Quick Suggestions")
+                        
+                        suggestions = [
+                            ("What are the main business requirements?", "📋"),
+                            ("Identify key stakeholders and their interests", "👥"),
+                            ("What are the biggest implementation risks?", "⚠️"),
+                            ("Suggest measurable success metrics/KPIs", "📊")
+                        ]
+                        
+                        cols = st.columns(4)
+                        for idx, (suggestion, icon) in enumerate(suggestions):
+                            with cols[idx]:
+                                if st.button(f"{icon} {suggestion[:18]}...", use_container_width=True, key=f"sugg_{idx}"):
+                                    st.session_state.user_input = suggestion
+                                    st.session_state.auto_send = True
+                                    st.rerun()
+                        
+                        # --- CHAT INPUT (TOP SECTION) ---
+                        st.markdown("### 💬 Your Question")
+                        
+                        # Handle auto-send from suggestions
+                        if st.session_state.auto_send and st.session_state.user_input:
+                            try:
+                                with st.spinner("🤔 Analyzing..."):
+                                    # Add user message to session
+                                    add_to_session_messages(project.get('product_name', ''), "user", st.session_state.user_input)
+                                    
+                                    # Get analysis from agent
+                                    response = safe_analyze_with_options(
+                                        project,
+                                        st.session_state.user_input,
+                                        response_style=st.session_state.response_style,
+                                        scope=st.session_state.response_scope
+                                    )
+                                    
+                                    # Add assistant response to session
+                                    add_to_session_messages(project.get('product_name', ''), "assistant", response)
+                                    
+                                    # Store latest response
+                                    st.session_state.latest_response = clean_response_text(response)
+                                    
+                                    # Clear auto-send flag
+                                    st.session_state.auto_send = False
+                                    st.session_state.user_input = ""
+                                    st.rerun()
+                            except Exception as e:
+                                display_error("Error processing auto-send", str(e))
+                                st.session_state.auto_send = False
+                        
+                        # Input field
+                        user_input = st.text_area(
+                            "Type your question:",
+                            value=st.session_state.user_input,
+                            placeholder=f"Ask about {project.get('product_name', 'the project')}...",
+                            height=80,
+                            key="chat_input",
+                            label_visibility="collapsed"
+                        )
+                        
+                        # Send button
+                        col1, col2 = st.columns([4, 1])
+                        with col1:
+                            pass
+                        with col2:
+                            send_button = st.button("🚀 Send", use_container_width=True, type="primary")
+                        
+                        # Handle send button
+                        if send_button and user_input.strip():
+                            try:
+                                with st.spinner("🤔 Analyzing..."):
+                                    # Check if user is mentioning another project
+                                    try:
+                                        detected_project = st.session_state.project_selector.detect_project_from_input(user_input)
+                                        
+                                        if detected_project and detected_project.get('product_name', '') != st.session_state.current_project_name:
+                                            # Switch to detected project
+                                            st.info(f"🔍 Switching to: **{detected_project.get('product_name', 'Unknown')}**")
+                                            st.session_state.selected_project = detected_project
+                                            st.session_state.current_project_name = detected_project.get('product_name', '')
+                                            st.session_state.user_input = user_input
+                                            st.rerun()
+                                    except:
+                                        pass  # Ignore project detection errors
+                                    
+                                    # Add user message to session
+                                    add_to_session_messages(project.get('product_name', ''), "user", user_input)
+                                    
+                                    # Get analysis from agent
+                                    response = safe_analyze_with_options(
+                                        project,
+                                        user_input,
+                                        response_style=st.session_state.response_style,
+                                        scope=st.session_state.response_scope
+                                    )
+                                    
+                                    # Add assistant response to session
+                                    add_to_session_messages(project.get('product_name', ''), "assistant", response)
+                                    
+                                    # Store latest response
+                                    st.session_state.latest_response = clean_response_text(response)
+                                    
+                                    # Clear input
+                                    st.session_state.user_input = ""
+                                    st.rerun()
+                            except Exception as e:
+                                display_error("Error processing your question", str(e))
+                        
+                        # Divider
+                        st.markdown("---")
+                        
+                        # --- LATEST RESPONSE (BOLD AND CLEAR) ---
+                        if st.session_state.latest_response or session_messages:
+                            st.markdown("### 📋 **Latest Response**")
+                            
+                            # Get the latest assistant response
+                            latest_response = st.session_state.latest_response
+                            if not latest_response and session_messages:
+                                # Find the latest assistant message
+                                assistant_messages = [m for m in session_messages if m.get("role") == "assistant"]
+                                if assistant_messages:
+                                    latest_response = assistant_messages[-1].get("content", "")
+                            
+                            if latest_response:
+                                # Display in a styled box with bold, clear text
+                                st.markdown(f"""
+                                <div class="latest-response-box">
+                                    <div class="latest-response-title">📋 Business Analyst Response</div>
+                                    <div class="response-content">
+                                        <strong>{latest_response[:500]}</strong>
+                                        {latest_response[500:] if len(latest_response) > 500 else ''}
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # Download button for latest response as Word
+                                col1, col2 = st.columns([3, 2])
+                                with col1:
+                                    # Show timestamp for latest response
+                                    if session_messages and session_messages[-1].get("timestamp"):
+                                        st.caption(f"🕒 Generated: {session_messages[-1]['timestamp']}")
+                                with col2:
+                                    # Create Word document for the response
+                                    response_filename = f"{project.get('product_name', 'Project')}_Response_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                                    try:
+                                        word_doc = create_comprehensive_word_document(latest_response, response_filename, project)
+                                        if word_doc:
+                                            st.download_button(
+                                                label="📄 Download as Word",
+                                                data=word_doc,
+                                                file_name=response_filename,
+                                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                                use_container_width=True
+                                            )
+                                    except Exception as e:
+                                        display_error("Error creating Word document", str(e), "warning")
+                        
+                        # --- CHAT HISTORY (HIDDEN BY DEFAULT) ---
+                        if st.session_state.show_chat_history and len(session_messages) > 0:
+                            st.markdown("---")
+                            st.markdown("### 📜 Chat History")
+                            
+                            # Show all messages except the latest (which is already displayed above)
+                            history_messages = session_messages[:-1] if len(session_messages) > 1 else []
+                            
+                            if history_messages:
+                                # Reverse so newest appear at top
+                                history_messages_reversed = list(reversed(history_messages))
+                                
+                                for msg in history_messages_reversed:
+                                    if msg.get("role") == "user":
+                                        st.markdown(f"""
+                                        <div class="chat-history-message chat-history-user">
+                                            <strong>👤 You:</strong> {msg.get('content', '')[:150]}{'...' if len(msg.get('content', '')) > 150 else ''}
+                                            <div class="timestamp">{msg.get('timestamp', '')}</div>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                    else:
+                                        st.markdown(f"""
+                                        <div class="chat-history-message chat-history-assistant">
+                                            <strong>🤖 Business Analyst:</strong> {msg.get('content', '')[:150]}{'...' if len(msg.get('content', '')) > 150 else ''}
+                                            <div class="timestamp">{msg.get('timestamp', '')}</div>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                    
+                                    # Show full message in expander
+                                    with st.expander("View full message"):
+                                        if msg.get("role") == "user":
+                                            st.markdown(f"**You:** {msg.get('content', '')}")
+                                        else:
+                                            st.markdown(f"**Business Analyst:** {msg.get('content', '')}")
+                            else:
+                                st.info("No previous chat history.")
+                        elif st.session_state.show_chat_history:
+                            st.info("Start chatting to build history!")
+                        
+                        # Display stored memories if chat history is shown
+                        if st.session_state.selected_project and st.session_state.show_chat_history:
+                            try:
+                                # Get project memories
+                                memories = st.session_state.agent.get_all_project_memories(
+                                    st.session_state.current_project_name
+                                )
+                                
+                                if memories:
+                                    with st.expander("🧠 Stored Information (Click to view)"):
+                                        for key, value in memories.items():
+                                            st.markdown(f"**{key.title()}:** {value}")
+                                        
+                                        # Clear memories button
+                                        if st.button("Clear Stored Information", key="clear_memories"):
+                                            try:
+                                                st.session_state.agent.clear_project_memories(
+                                                    st.session_state.current_project_name
+                                                )
+                                                st.rerun()
+                                            except Exception as e:
+                                                display_error("Error clearing memories", str(e))
+                            except:
+                                pass  # Silently ignore memory errors
+                                
+                    except Exception as e:
+                        display_error("Error in chat tab", str(e))
+                
+                with tab2:
+                    try:
+                        st.markdown("## 📄 Document Generation")
+                        st.info("Select a document type and configure options to generate professional documents")
+                        
+                        # Document type selection using HTML grid
+                        st.markdown("### 📋 Select Document Type")
+                        
+                        document_types = [
+                            {
+                                "type": "Business Requirements Document (BRD)",
+                                "icon": "📋",
+                                "description": "Comprehensive business requirements"
+                            },
+                            {
+                                "type": "Functional Requirements Document (FRD)",
+                                "icon": "⚙️",
+                                "description": "Detailed functional specifications"
+                            },
+                            {
+                                "type": "Non-Functional Requirements (NFR)",
+                                "icon": "📊",
+                                "description": "Performance, security, scalability"
+                            },
+                            {
+                                "type": "User Stories & Acceptance Criteria",
+                                "icon": "👥",
+                                "description": "User stories with acceptance criteria"
+                            },
+                            {
+                                "type": "Stakeholder Analysis Matrix",
+                                "icon": "🤝",
+                                "description": "Stakeholder analysis & engagement"
+                            },
+                            {
+                                "type": "SWOT Analysis Report",
+                                "icon": "🔍",
+                                "description": "Strengths, weaknesses, opportunities, threats"
+                            },
+                            {
+                                "type": "Process Flow Diagrams (BPMN)",
+                                "icon": "🔄",
+                                "description": "Business process modeling"
+                            },
+                        ]
+                        
+                        # Create document selection grid
+                        cols = st.columns(5)
+                        for idx, doc_info in enumerate(document_types):
+                            col_idx = idx % 5
+                            with cols[col_idx]:
+                                is_selected = st.session_state.selected_document_type == doc_info["type"]
+                                
+                                st.markdown(f"""
+                                <div class="doc-card {'selected' if is_selected else ''}" onclick="document.getElementById('doc_{idx}').click()">
+                                    <div style="font-size: 2rem; margin-bottom: 10px;">{doc_info['icon']}</div>
+                                    <div class="doc-title">{doc_info['type'].split('(')[0].strip()}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                if st.button(f"Select {doc_info['type'][:10]}", 
+                                           key=f"doc_{idx}",
+                                           type="primary" if is_selected else "secondary",
+                                           use_container_width=True):
+                                    st.session_state.selected_document_type = doc_info["type"]
+                                    st.rerun()
+                        
+                        # Show selected document
+                        if st.session_state.selected_document_type:
+                            st.markdown(f"""
+                            <div class="form-group-custom">
+                                <div class="form-label-custom">✅ Selected Document</div>
+                                <div style="font-size: 1.2rem; color: #2c3e50; padding: 10px; background: #e8f4fc; border-radius: 5px;">
+                                    📄 <strong>{st.session_state.selected_document_type}</strong>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        # Generate Button
+                        st.markdown("---")
+                        if st.button("🚀 Generate Document", type="primary", use_container_width=True):
+                            if not st.session_state.selected_document_type:
+                                display_error("Please select a document type first!", error_type="warning")
+                            else:
+                                # Generate document
+                                with st.spinner(f"🧠 Generating {st.session_state.selected_document_type}..."):
+                                    try:
+                                        document = safe_generate_document(
+                                            project=project,
+                                            document_type=st.session_state.selected_document_type,
+                                            format_tables=st.session_state.doc_format_tables
+                                        )
+                                        
+                                        # Store for download
+                                        st.session_state.last_document = document
+                                        st.session_state.last_document_name = f"{project.get('product_name', 'Project')}_{st.session_state.selected_document_type.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                                        
+                                        # Store in generated documents
+                                        project_name = project.get('product_name', '')
+                                        if project_name not in st.session_state.generated_documents:
+                                            st.session_state.generated_documents[project_name] = {}
+                                        st.session_state.generated_documents[project_name][st.session_state.selected_document_type] = document
+                                        
+                                        st.success(f"✅ {st.session_state.selected_document_type} generated successfully!")
+                                    except Exception as e:
+                                        display_error(f"Error generating {st.session_state.selected_document_type}", str(e))
+                        
+                        # Display generated documents for this project
+                        project_name = project.get('product_name', '')
+                        if project_name in st.session_state.generated_documents:
+                            st.markdown("---")
+                            st.markdown("### 📂 Generated Documents")
+                            
+                            for doc_type, doc_content in st.session_state.generated_documents[project_name].items():
+                                try:
+                                    with st.expander(f"📄 {doc_type}"):
+                                        # Show document metadata
+                                        st.markdown(f"""
+                                        <div class="document-meta">
+                                            <span>📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</span>
+                                            <span>📏 Pages: ~{len(doc_content.split())//500}</span>
+                                            <span>🔤 Words: {len(doc_content.split())}</span>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                        
+                                        # Show preview (first 3000 characters)
+                                        preview_text = doc_content[:3000]
+                                        if len(doc_content) > 3000:
+                                            preview_text += "\n\n... [Document continues] ..."
+                                        
+                                        # Check for diagrams
+                                        if "```mermaid" in preview_text:
+                                            st.markdown("""
+                                            <div class="diagram-placeholder">
+                                                📊 <strong>Diagrams Included</strong>
+                                                <p>This document contains Mermaid.js diagrams that will render in markdown viewers.</p>
+                                            </div>
+                                            """, unsafe_allow_html=True)
+                                        
+                                        st.text_area(
+                                            f"Preview of {doc_type}",
+                                            value=preview_text,
+                                            height=300,
+                                            disabled=True,
+                                            key=f"preview_{doc_type}"
+                                        )
+                                        
+                                        # Download buttons
+                                        col1, col2, col3 = st.columns(3)
+                                        
+                                        with col1:
+                                            # Word download
+                                            doc_filename = f"{project_name}_{doc_type.replace(' ', '_')}.docx"
+                                            try:
+                                                word_doc = create_comprehensive_word_document(doc_content, doc_filename, project)
+                                                if word_doc:
+                                                    st.download_button(
+                                                        label="📄 Word",
+                                                        data=word_doc,
+                                                        file_name=doc_filename,
+                                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                                        use_container_width=True,
+                                                        key=f"word_{doc_type}"
+                                                    )
+                                            except Exception as e:
+                                                display_error("Error creating Word document", str(e), "warning")
+                                        
+                                        with col2:
+                                            # Markdown download
+                                            st.download_button(
+                                                label="📝 Markdown",
+                                                data=doc_content,
+                                                file_name=f"{project_name}_{doc_type.replace(' ', '_')}.md",
+                                                mime="text/markdown",
+                                                use_container_width=True,
+                                                key=f"md_{doc_type}"
+                                            )
+                                        
+                                        with col3:
+                                            # PDF download (placeholder)
+                                            if st.button("📄 PDF", use_container_width=True, key=f"pdf_{doc_type}"):
+                                                st.info("PDF export coming soon!")
+                                except Exception as e:
+                                    display_error(f"Error displaying document {doc_type}", str(e))
+                    except Exception as e:
+                        display_error("Error in document generation tab", str(e))
+                
+                with tab3:
+                    try:
+                        # Display project details
+                        st.markdown("## 📊 Project Details")
+                        
+                        sections = project.get('sections', {})
+                        
+                        if sections:
+                            for section_name, section_content in sections.items():
+                                try:
+                                    with st.expander(f"**{section_name}**", expanded=(section_name in ["Problem Statement", "Solution"])):
+                                        st.write(section_content)
+                                except Exception as e:
+                                    display_error(f"Error displaying section {section_name}", str(e))
+                        else:
+                            st.info("No project details available.")
+                    except Exception as e:
+                        display_error("Error in project details tab", str(e))
+                        
+            except Exception as e:
+                display_error("Error creating tabs", str(e))
+                
+        except Exception as e:
+            display_error("Error displaying project content", str(e))
+            st.info("Please select a different project or refresh the page.")
+
+except Exception as e:
+    # Catch any unhandled exceptions in the main content area
+    display_error("Unexpected error in main application", str(e))
+    st.error("The application encountered an unexpected error. Please refresh the page or try again later.")
+    
+    # Show recovery options
+    if st.button("🔄 Reset Application"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
+# Footer with error boundary
+try:
+    st.markdown("---")
+    st.caption(f"Business Analyst Agent v1.0 • Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+except:
+    pass  # Silently ignore footer errors
