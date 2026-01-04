@@ -1174,7 +1174,7 @@ try:
                         
                         # Generate Button (Now "Retrieve")
                         st.markdown("---")
-                        if st.button("🚀 Retrieve Document", type="primary", use_container_width=True):
+                        if st.button("🚀 Generate Document", type="primary", use_container_width=True):
                             if not st.session_state.selected_document_type:
                                 display_error("Please select a document type first!", error_type="warning")
                             else:
